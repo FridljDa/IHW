@@ -1,0 +1,55 @@
+---
+title: "RFCDE"
+author: "Taylor Pospisil"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{RFCDE}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+library(IHW)
+```
+
+```{r generating data}
+m <- 20000
+X <- runif(m, min = 0, max = 20) # covariate
+H <- rbinom(m, 1, 0.1) # hypothesis true or false
+Z <- rnorm(m, H * X) # Z-score
+# .Random.seed <- save.seed
+pvalue <- 1 - pnorm(Z) # pvalue
+
+adjustment_type<- "BH" #"bonferroni" "BH" 
+```
+
+We choose a very evil fold
+```{r evil}
+nbins <- 3
+breaks <- quantile(X, probs = seq(0, 1, length.out = nbins+1))
+folds_evil <- cut(X, breaks=breaks, include.lowest=TRUE)
+```
+IHW can not produce any useful results
+```{r}
+IHW::ihw(pvalue, X, alpha =.1, folds = folds_evil, nbins = nbins) 
+
+```
+Lets choose a less evil fold
+```{r}
+first_levels<-levels(folds_evil)[1:2]
+first_levels_pos <- folds_evil==first_levels
+folds_less_evil <- folds_evil
+folds_less_evil[first_levels_pos] <- sample(first_levels, sum(first_levels_pos), replace = TRUE)
+```
+
+Ideally, IHW should do something
+```{r}
+IHW::ihw(pvalue, X, alpha =.1, folds = folds_less_evil, nbins = nbins) 
+
+```
+

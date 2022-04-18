@@ -1,0 +1,97 @@
+---
+title: "IHW simple Benchmark"
+output: html_document
+---
+
+
+Loading packages.
+```{r setup, message = F}
+library(magrittr)
+library(dplyr)
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(1)
+```
+
+Generate simulation from https://support.bioconductor.org/p/90005/#9137847. 
+
+```{r}
+m <- 1e5
+nfolds <- 3
+folds <- sample(1:nfolds, m, replace = TRUE)
+
+cov1 <- runif(m, -1, 1)
+cov2 <- runif(m, -1, 1)
+prop_alt <- 1 / (1 + exp(-1 * (3 * cov1 + 2 * cov2 - 5)))
+pvalue <- ifelse(rbinom(m, size = 1, prop_alt),
+  rbeta(m, 0.25, 1),
+  runif(m)
+)
+noise_dim <- 2
+covariate <- cbind(cov1, cov2)
+noise <- matrix(rnorm(noise_dim * m), m)
+covariate_noise <- cbind(covariate, noise)
+covariate_noise <- cbind(cov1, noise)
+```
+
+Loading my working version of IHW using random forest. 
+```{r load_functions, eval = T, message=F, results='hide'}
+devtools::load_all()
+# devtools::install_github("FridljDa/RFCDE")
+# library("IHW")
+# devtools::load_all("../../../RFCDE")
+# library("RFCDE")
+```
+
+
+Set parameters for IHW Forest
+```{r set_parameters3}
+quantile(pvalue, 1:10/10)
+taus <- c(0.5,0.6) # censoring parameter for BocaLeek estimator
+taus <- quantile(pvalue, 1:10/10)
+# nbasis <- 10L
+# ntrees <- 10L # number of trees per forest
+# nbins <- 10L
+lambda <- Inf
+
+ntrees <- 2L # number of trees per forest
+nbins <- 10L
+# nbasis <- 10L
+```
+
+The RFCDE variant takes longer, but is more powerful:
+
+Now we run the BocaLeek variant. Note, that we use the actual cov1 and cov2, not the binned version.
+```{r,  message=F}
+ihw_bocaleek <- ihw(pvalue, covariate_noise[, 1], folds = folds, alpha = 0.1, strat = "BocaLeek", ntrees = ntrees, taus = taus, nbins = nbins, lambda = lambda)
+rejections(ihw_bocaleek)
+```
+
+```{r}
+ihw_res_df_i <- IHW::as.data.frame(ihw_bocaleek)
+
+freq_i_t <- table(
+  fold = ihw_res_df_i$fold,
+  group = ihw_res_df_i$group1
+)
+freq_i_t
+```
+
+```{r}
+set.seed(3)
+my.df <- data.frame(x = rnorm(100), y = rnorm(100))
+forest <- ranger::ranger(
+  formula = x ~ y,
+  data = my.df,
+  num.trees = 1,
+  mtry = 1,
+  min.node.size = 0.9*50, # TODO force full tree
+  max.depth = 4
+)
+
+predict <- predict(forest,
+  predict.all = TRUE,
+  data = my.df,
+  type = "terminalNodes"
+)
+table(predict$predictions)
+```

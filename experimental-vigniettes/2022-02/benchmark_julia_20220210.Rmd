@@ -1,0 +1,109 @@
+---
+title: "IHW simple Benchmark"
+output: html_document
+---
+
+Loading packages.
+```{r setup, message = F}
+library(magrittr)
+library(dplyr)
+library("IHW")
+knitr::opts_chunk$set(echo = TRUE)
+
+library(doParallel)
+n.cores <- parallel::detectCores()
+doParallel::registerDoParallel(cores = min(5, n.cores - 1))
+library(doRNG)
+set.seed(123)
+```
+
+```{r}
+r <- 1
+m <- 20000
+```
+
+```{r}
+beta_unif_sim <- function(m=10000, mus_slope=2, one_sided_tests=FALSE, prob_one_sided=0.25){
+  Xs <- matrix(runif(m*2, 0,1), ncol=2)
+  colnames(Xs) <- c("X1", "X2")
+
+  pi1s <- ifelse( Xs[,1]^2 + Xs[,2]^2 <= 1, 0.02, 0.4)
+  mus <- pmax(1.3, sqrt(Xs) %*% c(1,1)*mus_slope)
+
+  mu_alphas <- 1/mus
+
+  Hs <- stats::rbinom(m, size=1, prob=pi1s)
+  Ps <- stats::runif(m)*(1-Hs) + stats::rbeta(m, mu_alphas, 1)*Hs
+  Xs <- data.frame(Xs)
+  if (one_sided_tests){
+    Hs_alt <-  1- (1-Hs)*stats::rbinom(m, size=1, prob=prob_one_sided)
+    Ps[Hs_alt == 0] <- stats::rbeta(sum(Hs_alt == 0), 1, 0.5)
+    oracle_lfdr_null <- (1-pi1s)*( 1-prob_one_sided + prob_one_sided*stats::dbeta(Ps, 1, 0.5) )
+  } else{
+    oracle_lfdr_null <- 1-pi1s
+  }
+  oracle_lfdr_alternative <- pi1s*dbeta(Ps, mu_alphas, 1)
+  oracle_lfdr <- oracle_lfdr_null/(oracle_lfdr_null+oracle_lfdr_alternative)
+  list(Xs=Xs, Ps=Ps, Hs=Hs, alphas=mu_alphas, pi1s=pi1s, oracle_lfdrs=oracle_lfdr)
+}
+```
+
+Generate simulation from https://support.bioconductor.org/p/90005/#9137847. 
+```{r, eval = T}
+betamix_sim <- beta_unif_sim(m = m, mus_slope = 2, one_sided_tests = FALSE, prob_one_sided = 0.25)
+```
+
+```{r}
+padjBH <- p.adjust(betamix_sim$Ps, method = "BH")
+sum(padjBH <= 0.1)
+```
+```{r manually bin Xs_i, eval = T}
+bins1d <- seq(from = 0, to = 1, length.out = 6)
+
+X1_bin = cut(betamix_sim$Xs$X1, bins1d)
+X2_bin = cut(betamix_sim$Xs$X2, bins1d)
+
+
+betamix_sim$X_bin <- factor(paste(X1_bin, X2_bin, sep = "*"))
+```
+
+Next, we run the BioConductor version of IHW with the binned covariates. 
+```{r}
+# run IHW on the grid
+res <- ihw(betamix_sim$Ps, betamix_sim$X_bin,
+           alpha = 0.1,
+           covariate_type = "nominal", lambda= Inf)
+rejections(res)
+```
+
+Loading my working version of IHW using random forest. 
+```{r load_functions, eval = T, message=F, results='hide'}
+devtools::load_all("IHW") 
+devtools::load_all("RFCDE")
+library("IHW")
+```
+Set parameters for IHW Forest
+```{r set_parameters3}
+tau <- 0.5 # censoring parameter for BocaLeek estimator
+n_basis <- 5
+ntrees <- 5 # number of trees per forest
+lambda <- Inf
+
+cov <- betamix_sim$Xs
+cov <- as.matrix(cov)
+```
+
+Now we run the BocaLeek variant. Note, that we use the actual cov1 and cov2, not the binned version.
+```{r,  message=F}
+ihw_bocaleek <- ihw(betamix_sim$Ps, cov, alpha = 0.1, strat = "BocaLeek", ntrees = ntrees, tau = tau, lambda = lambda)
+rejections(ihw_bocaleek)
+```
+
+The RFCDE variant takes longer, but is more powerful:
+```{r,  message=F}
+ihw_rfcde <- ihw(betamix_sim$Ps, cov, alpha = 0.1, strat = "RFCDE", ntrees = ntrees, tau = tau, lambda = lambda, n_basis = 10)			
+rejections(ihw_rfcde)
+```
+
+So the early results from the forest variant already look encouraging. However, we still have lots of ideas on how to further improve the method.
+Regarding FDR: FDR control is pretty much guaranteed from the theoretical point of view by the mathematical framework Nikos provided. We have further verified this on a few simulations. 

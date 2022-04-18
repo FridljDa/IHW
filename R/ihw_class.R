@@ -43,12 +43,12 @@
 ihwResult <- setClass("ihwResult",
          	      slots = list(
            		     df = "data.frame",
-           		     weights = "matrix",
+           		     weights = "list", #list of matrices
            		     alpha = "numeric",
                    nbins = "integer",
                    nfolds = "integer",
-                   regularization_term = "numeric",
-                   m_groups = "integer",
+                   regularization_term = "matrix", #ntrees * nfolds
+                   m_groups = "list",
                    penalty = "character",
                    covariate_type = "character",
                    adjustment_type = "character",

@@ -1,0 +1,97 @@
+---
+title: "IHW simple Benchmark"
+output: html_document
+---
+
+
+Loading packages.
+```{r setup, message = F}
+library(magrittr)
+library(dplyr)
+library("IHW")
+knitr::opts_chunk$set(echo = TRUE)
+
+set.seed(1)
+```
+
+Generate simulation from https://support.bioconductor.org/p/90005/#9137847. 
+
+```{r}
+n <- 1e5
+cov1 <- runif(n, -1, 1)
+cov2 <- runif(n, -1, 1)
+prop_alt <- 1 / (1 + exp(-1 * (3 * cov1 + 2 * cov2 - 5)))
+pvalue <- ifelse(rbinom(n, size = 1, prop_alt),
+  rbeta(n, 0.25, 1),
+  runif(n)
+)
+
+dat <- data.frame(
+  cov1 = cut(cov1, breaks = quantile(cov1, 0:4 / 4), include.lowest = TRUE),
+  cov2 = cut(cov2, breaks = quantile(cov2, 0:4 / 4), include.lowest = TRUE),
+  prop_alt,
+  pvalue
+)
+
+dat <- dat %>% mutate(group = factor(paste(as.integer(cov1), as.integer(cov2), sep = "-")))
+```
+
+First, we try normal  normal BH:
+```{r}
+padjBH <- p.adjust(dat$pvalue, method = "BH")
+sum(padjBH <= 0.1)
+```
+
+Next, we run the BioConductor version of IHW with the binned covariates. 
+```{r, eval = F}
+# run IHW on the grid
+res <- IHW::ihw(pvalue ~ group,
+  data = dat,
+  alpha = 0.1,
+  covariate_type = "nominal"
+)
+rejections(res)
+```
+
+Loading my working version of IHW using random forest. 
+```{r load_functions, eval = T, message=F, results='hide'}
+devtools::load_all("../../../IHW-1")
+#devtools::install_github("FridljDa/RFCDE")
+#devtools::load_all("IHW")
+devtools::load_all("../../../RFCDE")
+library("IHW")
+```
+
+
+Set parameters for IHW Forest
+```{r set_parameters3}
+tau <- 0.7 # censoring parameter for BocaLeek estimator
+n_basis <- 5
+ntrees <- 10 # number of trees per forest
+lambda <- Inf
+
+pvalue <- dat$pvalue
+covariate <- cbind(cov1, cov2)
+groups <- dat$group
+```
+
+```{r,  message=F}
+ihw_Julia <- ihw(pvalue, covariate, alpha = 0.1, strat = "Julia", ntrees = ntrees, lambda = lambda, n_basis = 10)
+rejections(ihw_Julia)
+```
+
+Now we run the BocaLeek variant. Note, that we use the actual cov1 and cov2, not the binned version.
+```{r,  message=F}
+ihw_bocaleek <- ihw(pvalue, covariate, alpha = 0.1, strat = "BocaLeek", ntrees = ntrees, tau = tau, lambda = lambda)
+rejections(ihw_bocaleek)
+```
+
+The RFCDE variant takes longer, but is more powerful:
+```{r,  message=F}
+ihw_rfcde <- ihw(pvalue, covariate, alpha = 0.1, strat = "RFCDE", ntrees = ntrees, lambda = lambda, n_basis = 10)
+rejections(ihw_rfcde)
+```
+
+
+So the early results from the forest variant already look encouraging. However, we still have lots of ideas on how to further improve the method.
+Regarding FDR: FDR control is pretty much guaranteed from the theoretical point of view by the mathematical framework Nikos provided. We have further verified this on a few simulations. 

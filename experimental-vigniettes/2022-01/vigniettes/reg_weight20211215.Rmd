@@ -1,0 +1,93 @@
+---
+title: "regul_weight"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+thresholds_to_weights <- function(ts, m_groups) {
+  if (length(ts) != length(m_groups)) stop("incosistent number of elements for ts and m_groups")
+
+  nbins <- length(ts)
+  m <- sum(m_groups)
+
+  if (all(ts == .0)) {
+    rep(1, nbins)
+  } else {
+    ts * m / sum(m_groups * ts)
+  }
+}
+```
+
+```{r input_par}
+gamma <- 0.5
+G <- 5
+
+ws <- runif(G,0,2)
+m_groups <-  runif(G,0,200)
+ws <- thresholds_to_weights(ws, m_groups)
+#TODO sort ws!
+```
+
+#TODO negative binomial!
+https://keisan.casio.com/exec/system/1180573211
+Negative hypergeometric distribution
+https://en.wikipedia.org/wiki/Negative_hypergeometric_distribution
+
+```{r}
+dnhyper<-function(xx, k, gamma, g){
+  n<- k +1 + gamma
+  r <- g*(n-k+1)/k
+  r <- floor(r)
+  sapply(xx, function(x){
+    a <- choose(x+r-1, x)
+    b <- choose(n-r-x, k-x)
+    c <- choose(n, k)
+    res <- a*b/c
+    #browser()
+    #print(paste(g,x,x==g))
+    ifelse(is.nan(res),
+           g==x,
+           res)
+    #res
+  })
+}
+```
+
+```{r}
+k <- 12
+g <- 10
+
+xx <- 0:k
+yy <- sapply(gammas, function(gamma) dnhyper(xx, k, gamma, g))
+yy <- as.data.frame(yy)
+colnames(yy) <- gammas
+data <- cbind(yy, xx)
+data <- data %>% 
+  pivot_longer(cols = -c("xx"),
+               names_to = "gamma")
+ggplot2::ggplot(data, aes(x= xx, y=value, color = gamma))+
+  geom_vline(xintercept = g, color = "red", linetype="dotted")+
+  geom_line()
+```
+
+
+```{r plot}
+df <- data.frame(ws = ws, reg_ws1 = reg_ws1,reg_ws2 = reg_ws2, pos = 1:G)
+df <- df %>%
+  tidyr::pivot_longer(
+    cols =  setdiff(names(df),"pos"),
+    names_to = "source"
+  )
+
+g <- ggplot(df, aes(x = pos, y = value, color = source)) +
+   ggbeeswarm::geom_beeswarm(groupOnX=TRUE, size = 3) +
+  geom_hline(yintercept=1, linetype="dashed", size=0.3)
+g
+```
+

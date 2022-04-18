@@ -1,0 +1,225 @@
+---
+title: "Boca Leek IHW Benchmark"
+output: html_document
+---
+
+## Preperation
+First some cleaning and basic packages.
+```{r setup, message = F}
+library(magrittr)
+library(dplyr)
+library(ggpubr)
+library(ggplot2)
+library(cowplot)
+knitr::opts_chunk$set(echo = TRUE)
+
+library(doParallel)
+n.cores <- parallel::detectCores()
+doParallel::registerDoParallel(cores = min(5, n.cores - 1))
+library(doRNG)
+set.seed(123)
+theme_set(theme_cowplot())
+```
+
+Now we need to download my current version of IHW. Make sure the official IHW package is not loaded. In doubt, detach IHW before. Make sure you have the most current version of `remotes`.
+```{r load_functions, eval = T}
+devtools::load_all()
+#devtools::install_github("ryurko/adaptMT")
+# library("IHW")
+```
+
+## 0.preperation 
+
+### Functions used throughout
+
+This will be the function to evaluate the IHW results. We want to control the False Discovery Rate (FDR) at a prespecified level, typically 0.1. We want to maximize power, e.g. number of discoveries.
+
+### Setting parameters 
+
+Setting some parameters used throughout. 
+```{r set_parameters}
+m <- 1e4
+r <- 10 # number of monte carlo replicates, increases run time immensely!
+folds_fdp_eval <- sample(1:5, m, replace = TRUE)
+alpha <- .1
+```
+
+The following parameters are auto-set in the BioConductor implementation. My code is not capable of this yet. 
+```{r set_parameters2}
+lambda <- Inf
+
+ntrees <- 5L # number of trees per forest
+ntaus <- 5
+taus <- NULL
+
+nsplit <- 5
+maxdepth <- 10 # 3 worked well!
+min.node.size <- NULL
+nbins <- 3L
+```
+
+For the random forest approach, a censoring parameter `tau` is introduced. I will revisit auto setting later. `ntrees` controls the number of trees in each random forest.
+
+## 1. grouped Simulation with signal
+
+```{r}
+prop_alt <- function(cov_row) {
+  r <- sum(cov_row^2)
+  #exp(-5*r)
+  #1 / (1 + exp(-cov1))
+  #1 / (1 + exp(-1 * (3 * cov_row[1]+cov_row[2] - 5)))
+  #browser()
+  #ifelse(sum(cov_row^2) <= 0.5, 0.9, 0)
+  #ifelse(r <= 0.1, 0.9, 0)
+  #1 / (1 + exp(-cov_row[1]))
+  #ifelse(sum(cov_row^2)  <= 1, 0.02, 0.4)
+  ifelse(cov_row[1] <= 0.1, 0.9, 0)
+  #ifelse(cov_row[1] <= 0.1, 0.9, 0) #This works well
+}
+```
+
+
+```{r, eval = T}
+#simple_sim <- foreach(i = seq_len(r)) %dorng% {
+simple_sim <- lapply(seq_len(r), function(i) {
+  
+  covariate_i <- matrix(runif(m * 2, 0, 1), nrow = m)
+  prop_alt_i <- apply(covariate_i, 1, prop_alt)
+  Hs_i <- rbinom(m, size = 1, prop_alt_i)
+  
+  #mus <- pmax(1.3, sqrt(covariate_i) %*% c(1,1)*1.5)
+  #mu_alphas <- 1/mus
+  #pvalue_i <- stats::runif(m)*(1-Hs_i) + stats::rbeta(m, mu_alphas, 1)*Hs_i
+  
+  pvalue_i <- ifelse(Hs_i,
+        rbeta(m, 0.25, 1),
+        runif(m)
+      )
+   
+  return(list(covariate = covariate_i, prop_alt = prop_alt_i, Hs = Hs_i, pvalue= pvalue_i))
+})
+```
+
+```{r, message=FALSE, warning=FALSE, eval = T}
+eval_quantile_simple <- lapply(simple_sim, function(simple_sim_i) {
+  covariate_i <- simple_sim_i$covariate
+  ihw_quantile <- ihw(simple_sim_i$pvalue, covariate_i, alpha = 0.1, strat = "cut", nbins = nbins, lambda = Inf, folds = folds_fdp_eval) 
+
+  rjs_i <- IHW::rejected_hypotheses(ihw_quantile)
+  Hs_i <- simple_sim_i$Hs
+  evaluated_i <- data.frame(pow = sum(rjs_i * Hs_i) / max(1, sum(Hs_i)), 
+                            FDP = sum(rjs_i * (1 - Hs_i)) / max(1, sum(rjs_i)))
+  evaluated_i
+})
+
+eval_quantile_simple <- do.call(rbind, eval_quantile_simple)
+eval_quantile_simple$strat <- "quantile"
+```
+
+```{r, message=FALSE, warning=FALSE, eval = T}
+eval_quantile_simple <- lapply(simple_sim, function(simple_sim_i) {
+  covariate_i <- simple_sim_i$covariate
+  ihw_quantile <- ihw(simple_sim_i$pvalue, covariate_i, alpha = 0.1, strat = "cut", nbins = nbins, lambda = Inf, folds = folds_fdp_eval) 
+
+  rjs_i <- IHW::rejected_hypotheses(ihw_quantile)
+  Hs_i <- simple_sim_i$Hs
+  evaluated_i <- data.frame(pow = sum(rjs_i * Hs_i) / max(1, sum(Hs_i)), 
+                            FDP = sum(rjs_i * (1 - Hs_i)) / max(1, sum(rjs_i)))
+  evaluated_i
+})
+
+eval_quantile_simple <- do.call(rbind, eval_quantile_simple)
+eval_quantile_simple$strat <- "quantile"
+```
+
+
+```{r, message=FALSE, warning=FALSE, eval = T}
+eval_bocaleek_simple <- lapply(simple_sim, function(simple_sim_i) {
+  covariate_i <- simple_sim_i$covariate
+
+  ihw_bocaleek <- ihw(simple_sim_i$pvalue, covariate_i,
+    alpha = 0.1, strat = "BocaLeek", ntrees = ntrees,
+    taus = taus, ntaus = ntaus, maxdepth = maxdepth, min.node.size = min.node.size, lambda = Inf, nsplit = nsplit)
+
+  rjs_i <- IHW::rejected_hypotheses(ihw_bocaleek)
+  Hs_i <- simple_sim_i$Hs
+  evaluated_i <- data.frame(pow = sum(rjs_i * Hs_i) / max(1, sum(Hs_i)), 
+                            FDP = sum(rjs_i * (1 - Hs_i)) / max(1, sum(rjs_i)))
+  evaluated_i
+})
+
+eval_bocaleek_simple <- do.call(rbind, eval_bocaleek_simple)
+eval_bocaleek_simple$strat <- "BocaLeek"
+```
+
+```{r, message=FALSE, warning=FALSE, eval = F}
+eval_bocaleek_noise <- lapply(simple_sim, function(simple_sim_i) {
+  covariate_i <- simple_sim_i$covariate
+  noise <- matrix(runif(m * 100), nrow = m)
+  covariate_noise_i <- cbind(covariate_i, noise)
+    
+  ihw_bocaleek <- ihw(simple_sim_i$pvalue, covariate_noise_i,
+    alpha = 0.1, strat = "BocaLeek", ntrees = ntrees, nsplit = nsplit,
+    taus = taus, ntaus = ntaus, maxdepth = maxdepth, min.node.size = min.node.size, lambda = Inf)
+
+  rjs_i <- IHW::rejected_hypotheses(ihw_bocaleek)
+  Hs_i <- simple_sim_i$Hs
+  evaluated_i <- data.frame(pow = sum(rjs_i * Hs_i) / max(1, sum(Hs_i)), 
+                            FDP = sum(rjs_i * (1 - Hs_i)) / max(1, sum(rjs_i)))
+  evaluated_i
+})
+
+eval_bocaleek_noise <- do.call(rbind, eval_bocaleek_noise)
+eval_bocaleek_noise$strat <- "BocaLeek more Noise"
+```
+
+```{r, message=FALSE, warning=FALSE, eval = T}
+eval_bh_simple <- lapply(simple_sim, function(simple_sim_i) {
+  rjs_i <- p.adjust(simple_sim_i$pvalue, n = m, method = "BH") <= 0.1
+  
+  Hs_i <- simple_sim_i$Hs
+  evaluated_bh_i <- data.frame(pow = sum(rjs_i * Hs_i) / max(1, sum(Hs_i)), 
+                               FDP = sum(rjs_i * (1 - Hs_i)) / max(1, sum(rjs_i)))
+  evaluated_bh_i
+})
+eval_bh_simple <- do.call(rbind, eval_bh_simple)
+eval_bh_simple$strat <- "BH"
+```
+
+```{r, message=FALSE, warning=FALSE}
+eval_all <- rbind(eval_bh_simple, eval_quantile_simple, eval_bocaleek_simple)# eval_bocaleek_noise 
+
+eval_all$strat <- factor(eval_all$strat,
+    levels = c('BH', 'quantile',"BocaLeek"),ordered = TRUE)#'quantile', "BocaLeek more Noise"
+
+eval_all_FDR <- ggplot(eval_all, aes(x = strat, y = FDP)) +
+  geom_boxplot(aes(color = strat),outlier.shape = NA) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  ylab("FDR")+
+  guides(color=guide_legend(title="Method", legend.text=element_text(size=4)))#+fill=guide_legend(nrow=2,byrow=TRUE)
+  #geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) #+
+  #ylim(0, NA)
+
+eval_all_power <- ggplot(eval_all, aes(x = strat, y = pow)) +
+  geom_boxplot(aes(color = strat), outlier.shape = NA) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  ylab("Power")#+
+  #geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5) #+
+  #ylim(0, NA)
+
+g_combined<- ggarrange(eval_all_FDR, eval_all_power, nrow = 1, widths = c(1, 1), common.legend = TRUE, legend = "bottom") 
+
+g_combined <- annotate_figure(g_combined, top = text_grob("ifelse(sum(cov_row[1]^2) <= 1, 0.9, 0)", 
+               color = "red", face = "bold", size = 14))
+```
+
+```{r}
+ggplot2::ggsave("~/R/IHW-1/figures/benchmark.png", g_combined,
+                width = 5, height = 3.25)
+g_combined
+```
+

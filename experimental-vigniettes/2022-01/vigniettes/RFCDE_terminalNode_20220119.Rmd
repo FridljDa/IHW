@@ -1,0 +1,97 @@
+---
+title: "RFCDE"
+author: "Taylor Pospisil"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{RFCDE}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+Random forests is a common non-parametric regression technique which
+performs well for mixed-type data and irrelevant covariates, while
+being robust to monotonic variable transformations. RFCDE fits random
+forest models optimized for nonparametric conditional density
+estimation.
+
+## Example
+```{r load_functions, echo = F, message = F, eval = F}
+devtools::load_all()
+```
+
+
+
+```{r set parameters}
+m <- 20000
+nfolds <- 5
+nbins <- 5
+node_size <- floor(m / (3 * nbins)) # todo smaller trees are ok for forest
+```
+
+```{r generate data}
+Xs <- runif(m, min = 0, max = 2.5) # covariate
+Hs <- rbinom(m, 1, 0.6) # hypothesis true or false
+Zs <- rnorm(m, Hs * Xs) # Z-score
+folds <- sample(1:nfolds, m, replace = TRUE)
+Ps <- 1 - pnorm(Zs) # pvalue
+Xs <- as.matrix(Xs)
+# todo rename Ps to be more consistent
+```
+
+### Training
+
+Trees are recursively partitioned to minimize the CDE loss
+
+$$ \int \int (\hat{f}(x \mid z) - f(x \mid z))^{2} dz dP(x) $$
+
+This is efficiently calculated using an orthogonal series
+representation of the conditional densities. The resolution of this
+representation is controlled by `n_basis`.
+
+
+### Prediction
+
+We use the forest structure to determine weights for a weighted kernel
+density estimate. The `predict` function evaluates this density on the
+provided grid.
+
+#group_by_forest2 <- function(pvalues, covariates, folds, nfolds, nbins, ntrees = 10, seed=NULL)
+
+```{r}
+n_trees <- 10
+mtry <- 4
+n_basis <- 15
+groups <- matrix(0, nrow = nrow(Xs), ncol = n_trees)
+
+i <- 1
+for (i in seq_len(nfolds)) {
+  # Ps_holdout_fold <- Ps[folds == i]
+  # Xs_holdout_fold <- Xs[folds == i, ]
+  holdout_fold <- which(folds != i)
+  Ps_other_folds <- Ps[folds != i]
+  Xs_other_folds <- Xs[folds != i, ]
+
+  forest_other_folds <- RFCDE(
+    x_train = Ps_other_folds, z_train = Xs_other_folds, n_trees = n_trees, mtry = mtry,
+    node_size = node_size, n_basis = n_basis
+  )
+
+  forest_other_folds$rcpp$set_leaves_id()
+
+  for (j in holdout_fold) {
+    groups[j, ] <- forest_other_folds$rcpp$traverse_forest(Xs[j, ]) #TODO as matrix
+  }
+}
+
+groups <- as.data.frame(groups)
+groups[] <- lapply(groups, as.factor)
+colnames(groups) <- paste0("group", seq_along(groups))
+```

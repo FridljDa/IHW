@@ -1,0 +1,252 @@
+---
+title: "IHW simple Benchmark"
+output: html_document
+---
+
+
+Loading packages.
+```{r setup, message = F}
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(1)
+```
+
+Generate simulation from https://support.bioconductor.org/p/90005/#9137847. 
+
+```{r}
+m <- 1e5
+nfolds <- 3
+folds <- sample(1:nfolds, m, replace = TRUE)
+
+data_train <- data.frame(
+  cov1 = runif(m, -1, 1),
+  cov2 =  runif(m, -1, 1)
+)
+
+data_train <- data_train %>%
+  mutate(prop_alt = 1 / (1 + exp(-1 * (3 * cov1 + 2 * cov2 - 5))),
+         pvalue = ifelse(rbinom(m, size = 1, prop_alt),
+  rbeta(m, 0.25, 1),
+  runif(m)
+))
+
+
+noise_dim <- 0
+# train data
+covariate <- cbind(cov1, cov2)
+#noise <- matrix(runif(noise_dim * m, -1, 1), m)
+#covariate_noise <- cbind(covariate, noise)
+
+# test data
+m_test <- 1000
+
+data_test <- expand.grid(
+  cov1 = seq(-1, 1, length.out = m_test), 
+                cov2 = seq(-1, 1, length.out = m_test))
+
+data_test <- data_test %>% mutate(
+  prop_alt_test = 1 / (1 + exp(-1 * (3 * cov1 + 2 * cov2 - 5))),
+  pvalue = ifelse(rbinom(n(), size = 1, prop_alt_test),
+    rbeta(n(), 0.25, 1),
+    runif(n())
+  )
+)
+
+names(covariate_noise) <- c("cov1", "cov2")
+#colnames(data_test) <- colnames(covariate_noise)
+```
+
+```{r}
+cond_exp <- function(cov1, cov2) {
+  prop_alt <- 1 / (1 + exp(-1 * (3 * cov1 + 2 * cov2 - 5)))
+  true_alt_expectation <- 0.25 / (0.25 + 1)
+  cond_exp <- 0.5 + prop_alt * (0.5 - true_alt_expectation)
+  cond_exp
+}
+```
+
+```{r, eval = F}
+JuliaCall::julia_setup(JULIA_HOME = "/Applications/Julia-1.6.app/Contents/Resources/julia/bin/")
+JuliaCall::julia_command("cd(\"/Users/default/Google Drive/currentDocumants/Studium/Master/3.Semester/Masterarbeit/Code/IndependentHypothesisWeightingTrees.jl\")")
+JuliaCall::julia_source("/Users/default/Google Drive/currentDocumants/Studium/Master/3.Semester/Masterarbeit/Code/IndependentHypothesisWeightingTrees.jl/example/wrapper.jl")
+```
+
+Loading my working version of IHW using random forest. 
+```{r load_functions, eval = T, message=F, results='hide'}
+devtools::load_all()
+# devtools::install_github("FridljDa/RFCDE")
+# library("IHW")
+# devtools::load_all("../../../RFCDE")
+library("RFCDE")
+```
+
+
+Set parameters for IHW Forest
+```{r set_parameters3}
+tau <- 0.5 # censoring parameter for BocaLeek estimator
+# nbasis <- 10L
+# ntrees <- 10L # number of trees per forest
+# nbins <- 10L
+lambda <- Inf
+
+nbasis <- 10L
+ntrees <- 3L # number of trees per forest
+nbins <- 10L
+```
+
+The RFCDE variant takes longer, but is more powerful:
+```{r, eval = F}
+ihw_Julia <- ihw(pvalue, covariate_noise, folds = folds, alpha = 0.1, strat = "Julia", ntrees = ntrees, lambda = lambda, nbins = nbins, nbasis = nbasis)
+rejections(ihw_Julia)
+```
+
+
+```{r,  message=F}
+ihw_cut <- ihw(pvalue, covariate_noise, folds = folds, alpha = 0.1, strat = "cut", lambda = lambda, nbins = nbins)
+rejections(ihw_cut)
+```
+
+```{r, eval = T}
+ihw_bocaleek <- ihw(pvalue, covariate_noise, folds = folds, alpha = 0.1, strat = "BocaLeek", ntrees = ntrees, nbins = nbins, lambda = lambda, nbasis = nbasis, tau = tau)
+rejections(ihw_bocaleek)
+```
+
+```{r}
+folds <- c(rep(1, nrow(data_train)), rep(2, nrow(data_test)))
+
+group_by_forest_BocaLeek <- function(pvalues, covariates, folds, nbins, tau, ntrees){
+  
+}
+```
+
+```{r}
+# binary indicator from Boca and leek
+indic <- (pvalue >= tau) / (1 - tau)
+data_train <- data.frame(indic, covariate, folds)
+
+# calculate parameters for forest
+maxdepth <- log2(nbins)
+maxdepth <- ceiling(maxdepth)
+min.node.size <- 2^(maxdepth + 1) - 1
+minbucket <- floor(m / (3 * nbins)) # only for
+
+groups <- matrix(0, nrow = nrow(data_train), ncol = ntrees)
+
+i <- 1
+# for (i in unique(folds)) { #TODO instean i in unique(folds)
+# data_holdout_fold <- data[folds == i, ]
+data_other_folds <- data_train[folds != i, ]
+
+# build forest based on other folds
+forest_other_fold <- ranger::ranger(
+  formula = indic ~ . - folds,
+  data = data_other_folds,
+  num.trees = ntrees,
+  mtry = 1,
+  min.node.size = min.node.size, # TODO force full tree
+  max.depth = maxdepth,
+  splitrule = "variance",
+  importance = "none"
+)
+
+# predict terminal nodes of holdout_fold
+predict_groups <- predict(forest_other_fold,
+  predict.all = TRUE,
+  data = data_test,
+  type = "terminalNodes"
+)
+
+groups <- predict_groups$predictions
+# }
+
+groups <- as.data.frame(groups)
+groups[] <- lapply(groups, as.factor)
+colnames(groups) <- paste0("group", seq_along(groups))
+```
+
+```{r, eval = T}
+df <- cbind(data_test, groups)
+  
+df <- df %>%
+  # select(pvalue, adj_pvalue, weight, weighted_pvalue, covariate.cov1, covariate.cov2, fold, group1) %>%
+  tidyr::pivot_longer(
+    starts_with("group"),
+    names_to = "tree",
+    values_to = "tree_group"
+  )
+
+df2 <- df %>%
+  group_by(tree, tree_group) %>%
+  mutate(ecdf = 1 - mean(pvalue)) %>%
+  ungroup() %>%
+  group_by(cov1, cov2) %>%
+  summarize(ecdf = mean(ecdf))
+
+df2 %>%
+  ungroup() %>%
+  ggplot(aes(cov1, cov2, color = ecdf)) +
+  geom_point()
+```
+
+```{r,  message=F, eval = F}
+ihw_rfcde_legendre <- ihw(pvalue, covariate_noise, folds = folds, alpha = 0.1, strat = "RFCDE", ntrees = ntrees, nbins = nbins, lambda = lambda, nbasis = nbasis, basis_system = "cosine")
+# Legendre
+rejections(ihw_rfcde_legendre)
+```
+
+```{r}
+x_seq <- seq(-1, 1, length.out = 1000)
+y_seq <- x_seq
+z <- outer(x_seq, y_seq, cond_exp)
+colnames(z) <- y_seq
+rownames(z) <- x_seq
+
+# Convert to long format, convert row and column values to numeric, and create groups for colors
+dat <- as.data.frame(z) %>%
+  tibble::rownames_to_column(var = "x_seq") %>%
+  tidyr::gather(y_seq, value, -x_seq) %>%
+  mutate(
+    y_seq = as.numeric(y_seq),
+    x_seq = as.numeric(x_seq),
+    value_range = cut(value, 8)
+  )
+
+ggplot(dat, aes(x_seq, y_seq, fill = value_range)) +
+  geom_raster() +
+  scale_fill_manual(values = colorRampPalette(c("red", "orange", "yellow"))(nbins)) +
+  theme_classic() +
+  guides(fill = guide_legend(reverse = TRUE))
+```
+
+```{r}
+ihw_cut@df %>%
+  group_by(group) %>%
+  mutate(ecdf = 1 - mean(pvalue)) %>%
+  ungroup() %>%
+  ggplot(aes(cov1, cov2, color = ecdf)) +
+  geom_point()
+```
+
+
+```{r, eval = F}
+ihw_Julia@df %>%
+  filter(fold == 1) %>%
+  ggplot(aes(cov1, covariate.V2, color = group2)) +
+  geom_point() # TODO number of bins
+```
+
+```{r, eval = F}
+ihw_rfcde_legendre@df %>%
+  filter(fold == 1) %>%
+  ggplot(aes(cov1, covariate.V2, color = group2)) +
+  geom_point()
+```
+
+```{r, eval = F}
+ihw_bocaleek@df %>%
+  filter(fold == 1) %>%
+  ggplot(aes(covariate.cov1, covariate.cov2, color = group1)) +
+  geom_point()
+```

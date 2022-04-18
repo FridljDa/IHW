@@ -1,0 +1,136 @@
+---
+title: "IHW simple Benchmark"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+Loading packages.
+```{r setup, message = F}
+library(magrittr)
+library(dplyr)
+library(doParallel)
+n.cores <- parallel::detectCores()
+doParallel::registerDoParallel(cores = min(5, n.cores - 1))
+library(doRNG)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+set.seed(1)
+```
+
+We set some parameters 
+
+```{r set_parameters}
+m <- 1e5
+ntrees <- 1L # number of trees per forest
+nbins <- 10L
+lambda <- Inf
+alpha <- 0.1
+nfolds <- 5
+
+maxdepth <- 6 # 3 worked well!
+min.node.size <- 1000
+nsplit <- 5
+nbins <- 10L
+
+ntaus <- 1
+taus <- NULL
+```
+
+We load the Julia 1.6 and the Julia code we want to use
+
+##
+```{r}
+weighted_bh_rejections <- function(weights, pvalues) {
+  weighted_pvalues <- ifelse(pvalues == 0, 0,
+    ifelse(weights == 0,
+      1,
+      pmin(pvalues / weights, 1)
+    )
+  )
+
+  adj_p <- p.adjust(weighted_pvalues, method = "BH", n = m)
+  sum(adj_p <= 0.1)
+}
+```
+
+## multivariate simulation
+```{r}
+devtools::load_all("../../../IHW BioConductor")
+#devtools::load_all()
+```
+
+Generate simple simulation from https://support.bioconductor.org/p/90005/#9137847. 
+```{r}
+folds <- sample(seq_len(nfolds), m, replace = TRUE)
+cov1 <- runif(m, -1, 1)
+prop_alt <- 1 / (1 + exp(-cov1))
+pvalues <- ifelse(rbinom(m, size = 1, prop_alt),
+  rbeta(m, 0.25, 1),
+  runif(m)
+)
+covariates <- cov1
+```
+
+```{r}
+rm(list = c("fill_nas_reorder", "fill_nas_reorder_dataframe", "filter_pvals_for_optim", "get_bh_threshold", "get_bh_thresholds", "get_wbh_weights", "group_by_forest_BocaLeek", "group_by_forest_BocaLeek2", "group_by_forest_Julia", "group_by_forest_RFCDE", "groups_by_cut", "groups_by_filter", "lsl_pi0_est", "mydiv", "padj_to_threshold", "posteori_regularization"))
+source("../../R/helpers.R")
+```
+
+```{r}
+groups_cut <- groups_by_cut(covariate = as.matrix(covariates), nbins = 40)
+#groups_cut <- unlist(groups_cut)
+```
+
+official package 
+```{r}
+ihw_res_1 <- ihw(pvalues = pvalues, covariates =  unlist(groups_cut), alpha = alpha, folds = folds, lambda = Inf, covariate_type = "nominal")
+ihw_res_2 <- ihw(pvalues = pvalues, covariates = covariates, alpha = alpha, folds = folds, lambda = Inf, covariate_type = "ordinal")
+rejections(ihw_res_1)
+rejections(ihw_res_2)
+weighted_bh_rejections(weights(ihw_res_1), pvalues)
+weighted_bh_rejections(weights(ihw_res_2), pvalues)
+```
+```{r}
+groups_bocaleek <- group_by_forest_BocaLeek(pvalues, as.matrix(covariates), folds, ntrees = ntrees, taus = taus, ntaus = ntaus, maxdepth = maxdepth, min.node.size = min.node.size, nsplit = nsplit)
+str(groups_bocaleek)
+```
+
+```{r, eval = F}
+ws <- foreach(i = seq_len(ncol(groups_bocaleek))) %dopar% {
+  groups_i <- groups_bocaleek[, i]
+  ihw_res_i <- ihw(pvalues = pvalues, covariates = groups_i, alpha = alpha, folds = folds, lambda = lambda, covariate_type = "nominal")
+  IHW::weights(ihw_res_i)
+}
+ws <- do.call(cbind, ws)
+ws <- apply(ws, 1, mean)
+weighted_bh_rejections(ws, pvalues)
+```
+my implementation
+
+
+```{r}
+#.rs.restartR()
+rm(list = c("fill_nas_reorder", "fill_nas_reorder_dataframe", "filter_pvals_for_optim", "get_bh_threshold", "get_bh_thresholds", "get_wbh_weights", "group_by_forest_BocaLeek", "group_by_forest_BocaLeek2", "group_by_forest_Julia", "group_by_forest_RFCDE", "groups_by_cut", "groups_by_filter", "lsl_pi0_est", "mydiv", "padj_to_threshold", "posteori_regularization"))
+devtools::load_all()
+```
+
+```{r}
+#ihw_res_1 <- ihw(pvalues = pvalues, covariates =  groups_cut, alpha = alpha, folds = folds, lambda = Inf, covariate_type = "nominal")
+ihw_res_2 <- ihw(pvalues = pvalues, covariates = covariates, alpha = alpha, folds = folds, lambda = Inf, covariate_type = "ordinal")
+#rejections(ihw_res_1)
+rejections(ihw_res_2)
+#weighted_bh_rejections(weights(ihw_res_1), pvalues)
+weighted_bh_rejections(weights(ihw_res_2), pvalues)
+```
+
+```{r}
+ihw_bocaleek <- ihw(pvalues, covariates,covariate_type = "ordinal",nbins == "auto",
+    alpha = 0.1, strat = "BocaLeek",folds, ntrees = ntrees, taus = taus, ntaus = ntaus, maxdepth = maxdepth, min.node.size = min.node.size, nsplit = nsplit, lambda = Inf)
+rejections(ihw_bocaleek)
+```
+
+
+

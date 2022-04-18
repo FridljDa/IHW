@@ -1,0 +1,232 @@
+---
+title: "bocaleek_tree20211207"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(magrittr)
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
+# Rcpp::sourceCpp("/g/huber/users/fridljand/R/IHW/bioconductor/C++/grenador.cpp")
+# Rcpp::sourceCpp("/Volumes/fridljand/R/IHW/bioconductor/C++/grenador.cpp")
+library(doParallel)
+registerDoParallel(cores = 14)
+library(doRNG)
+```
+
+## R Markdown
+
+
+```{r load_functions, echo = F, include=FALSE}
+# script.dir <- "/Volumes/fridljand/R/IHW/bioconductor/R"
+script.dir <- "/g/huber/users/fridljand/R/IHW/bioconductor/R"
+scripts <- list.files(script.dir)
+lapply(scripts, function(script) {
+  source(file.path(script.dir, script))
+})
+```
+
+```{r create_fdp_eval, include=FALSE }
+#' Evaluate multiple testing procedure
+#
+#' @param Hs Vector with indicators of alternatives (1) and true nulls (0)
+#' @param rjs Vector with indicator of rejected hypotheses
+#' @return Data frame with columns `rjs` (total rejections), `pow` (Power), `FDP` (False discovery proportion)
+#' @export
+fdp_eval <- function(Hs, rjs) {
+  rjs_total <- sum(rjs)
+  pow <- sum(rjs * Hs) / max(1, sum(Hs))
+  FDP <- sum(rjs * (1 - Hs)) / max(1, rjs_total)
+  FWER <- sum((1 - Hs) * rjs) > 0
+  data.frame(rjs = rjs_total, pow = pow, FDP = FDP, FWER = FWER)
+}
+```
+Lets first set some parameters
+```{r set parameters}
+m <- 10000
+nfoldsI <- 3
+r <- 20
+folds <- sample(1:nfoldsI, m, replace = TRUE)
+adjustment_type <- "BH"
+```
+
+Now we create the betamix sample data according to Section 5.2 with two-dimensional covariates
+```{r create data}
+mus_slope <- 1.5
+prob_one_sided <- 0.25
+
+Xs_r <- lapply(1:r, function(i){
+  Xs <- matrix(runif(m * 2, 0, 1), ncol = 2)
+  colnames(Xs) <- c("X1", "X2")
+  Xs
+})
+
+Hs_r <- lapply(1:r, function(i){
+  Xs <- Xs_r[[i]]
+  pi1s <- ifelse(Xs[, 1]^2 + Xs[, 2]^2 <= 1, 0.02, 0.4)
+  Hs <- stats::rbinom(m, size = 1, prob = pi1s)
+  Hs
+})
+
+Ps_r <- lapply(1:r, function(i){
+  Hs <- Hs_r[[i]]
+  Xs <- Xs_r[[i]]
+  mus <- pmax(1.3, sqrt(Xs) %*% c(1, 1) * mus_slope)
+  mu_alphas <- 1 / mus
+  Ps <- stats::runif(m) * (1 - Hs) + stats::rbeta(m, mu_alphas, 1) * Hs
+  Ps
+})
+```
+
+
+To run regular IHW, we need to manually bin the covariates in 2d squares
+```{r manually bin Xs}
+bins1d <- seq(from = 0, to = 1, length.out = 6)
+Xs_binned_r <- lapply(1:r, function(i){
+  Xs <- Xs_r[[i]]
+  Xs_binned <- data.frame(
+    X1 = cut(Xs[, 1], bins1d),
+    X2 = cut(Xs[, 2], bins1d)
+  )
+  Xs_binned <- apply(Xs_binned, 1, function(row) {
+    factor(paste(row[[1]], row[[2]], sep = "*"))
+  })
+  Xs_binned
+})
+```
+
+We run the normal IHW with the binned covariates
+```{r run_IHW, message=FALSE}
+ihw_no_forest_r <- lapply(1:r, function(i) {
+  Xs_binned <- Xs_binned_r[[i]]
+  Ps <- Ps_r[[i]]
+  ihw_no_forest <- ihw(Ps, Xs_binned, alpha = .1, folds = folds, use_forest = FALSE, adjustment_type = "BH", lp_solver = "lpsymphony", lambda = Inf)
+})
+```
+
+Now we run the IHW Forest with 100 trees. For the Boca Leek tree we need to provide the censoring parameter tau. The exact value of tau should not be too important. We will revisit this issue in a later stage of the project. 
+
+```{r run_IHW_forest, message=FALSE}
+tau <- 0.7
+ihw_forest_r <- lapply(1:r, function(i) {
+  Xs <- Xs_r[[i]]
+  Ps <- Ps_r[[i]]
+  ihw_forest <- ihw(Ps, Xs, alpha = .1, folds = folds, use_forest = TRUE, ntrees = 100, tau = tau, lp_solver = "lpsymphony", lambda = Inf)
+})
+```
+
+## Evaluating and comparing
+We see that for this example, that the forest structure increases power considerably.
+```{r fdp_eval}
+fdp_compare_r <- lapply(1:r, function(i) {
+  Hs <- Hs_r[[i]]
+  ihw_no_forest <- ihw_no_forest_r[[i]]
+  ihw_forest <- ihw_forest_r[[i]]
+  fdp_eval_no_forest <- fdp_eval(Hs, IHW::rejected_hypotheses(ihw_no_forest))
+  fdp_eval_forest <- fdp_eval(Hs, IHW::rejected_hypotheses(ihw_forest))
+  fdp_compare <- rbind(
+    manually_cut = fdp_eval_no_forest,
+    use_forest = fdp_eval_forest
+  )
+  fdp_compare <- tibble::rownames_to_column(fdp_compare, "forest")
+})
+fdp_compare_r <- do.call(rbind, fdp_compare_r)
+fdp_compare_r <- fdp_compare_r %>%
+  dplyr::group_by(forest) %>%
+  dplyr::summarise(
+    rjs = mean(rjs),
+    pow = mean(pow),
+    FDR = mean(FDP),
+    FWER = mean(FWER)
+  )
+fdp_compare_r
+```
+
+For completeness, let's plot the weights in 2d as in Nikos' draft of proof pdf
+```{r plot_weights no forest}
+ihw_no_forest <- ihw_no_forest_r[[1]]
+Xs <- Xs_r[[1]]
+data <- data.frame(Xs, weight = ihw_no_forest@df[["weight"]])
+ggplot(data = data, aes(x = X1, y = X2, color = weight)) +
+  geom_point()
+```
+
+```{r plot_weights forest}
+ihw_forest <- ihw_forest_r[[1]]
+data <- data.frame(Xs, weight = ihw_forest@df[["weight"]])
+ggplot(data = data, aes(x = X1, y = X2, color = weight)) +
+  geom_point()
+```
+
+## Noise extra dimensions      
+Lets add some uninformative noise. If this still works, this would be extremely convenient for the end -user and disencourage active cheating. Furthermore, so many dimensions definitly necessitates the use of regression trees. 
+```{r, message=FALSE, warning=FALSE}
+fdp_compare_noise_r <- lapply(1:r, function(i) {
+  Xs <- Xs_r[[i]]
+  Ps <- Ps_r[[i]]
+  Hs <- Hs_r[[i]]
+  noise <- matrix(runif(m * 5), nrow = m)
+  Xs <- cbind(Xs, noise)
+  ihw_forest_noisy <- ihw(Ps, Xs, alpha = .1, folds = folds, use_forest = TRUE, ntrees = 100, tau = tau, lp_solver = "lpsymphony", lambda = Inf)
+  fdp_eval(Hs, IHW::rejected_hypotheses(ihw_forest_noisy))
+})
+fdp_compare_noise_r <- do.call(rbind, fdp_compare_noise_r)
+fdp_compare_noise_r <- fdp_compare_noise_r %>%
+  dplyr::summarise(
+    rjs = mean(rjs),
+    pow = mean(pow),
+    FDR = mean(FDP),
+    FWER = mean(FWER)
+  )
+fdp_compare_noise_r
+```
+
+## But does it work better in univariate case?
+Lets return to a simple, univariate example. The official referencemanual work with following data
+```{r generatedata_univ, message=FALSE}
+#rm(Xs_r, Hs_r, Ps_r)
+Xs_r <- lapply(1:r, function(i) {
+  runif(m, min = 0, max = 2.5) # covariate
+})
+Hs_r <- lapply(1:r, function(i) {
+  rbinom(m, 1, 0.1) # hypothesis true or false
+})
+Ps_r <- lapply(1:r, function(i) {
+  Xs <- Xs_r[[i]]
+  Hs <- Hs_r[[i]]
+  Z <- rnorm(m, Hs * Xs) # Z-score
+  Ps <- 1 - pnorm(Z) # pvalue
+})
+```
+
+Lets run IHW forest and the quantile slicing on this: 
+```{r run_IHW_univ, message=FALSE}
+fdp_compare_univ_r <- lapply(1:r, function(i) {
+  Xs <- Xs_r[[i]]
+  Ps <- Ps_r[[i]]
+  Hs <- Hs_r[[i]]
+  ihw_quantile_slicing <- ihw(Ps, Xs, alpha = .1, folds = folds, use_forest = FALSE, adjustment_type = "BH", lp_solver = "lpsymphony", lambda = Inf)
+  ihw_forest <- ihw(Ps, Xs, alpha = .1, folds = folds, use_forest = TRUE, ntrees = 100, tau = tau, lp_solver = "lpsymphony", lambda = Inf)
+  fdp_compare_univ <- rbind(
+    quantile_slicing = fdp_eval(Hs, IHW::rejected_hypotheses(ihw_quantile_slicing)),
+    use_forest = fdp_eval(Hs, IHW::rejected_hypotheses(ihw_forest))
+  )
+  tibble::rownames_to_column(fdp_compare_univ, "forest")
+})
+fdp_compare_univ_r <- do.call(rbind, fdp_compare_univ_r)
+fdp_compare_univ_r <- fdp_compare_univ_r %>%
+  dplyr::group_by(forest) %>%
+  dplyr::summarise(
+    rjs = mean(rjs),
+    pow = mean(pow),
+    FDR = mean(FDP),
+    FWER = mean(FWER)
+  )
+fdp_compare_univ_r
+```
+So it turns out, that using the Boca Leek Tree actually did harm in this case. 
+
+## Conclusion
+We need to do better benchmarking, with different models and more Monte Carlo replicates.
+We might gain more power by making a smarter parameter choice for tau or introducing rfcde trees (https://github.com/tpospisi/RFCDE). 

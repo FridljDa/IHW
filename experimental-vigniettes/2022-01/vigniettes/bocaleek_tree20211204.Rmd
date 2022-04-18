@@ -1,0 +1,64 @@
+---
+title: "tree_20211204"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)       # data wrangling
+library(rpart)       # performing regression trees
+library(rpart.plot)  # plotting regression trees
+library(ipred)       # bagging
+library(caret)       # bagging
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r generate data}
+set.seed(1)
+m <- 20000
+nfolds <- 5
+Xs <- runif(m, min = 0, max = 2.5) # covariate
+Hs <- rbinom(m, 1, 0.6) # hypothesis true or false
+Zs <- rnorm(m, Hs * Xs) # Z-score
+sorted_folds <- sample(1:nfolds, m, replace = TRUE)
+# .Random.seed <- save.seed
+Ps <- 1 - pnorm(Zs) # pvalue
+```
+
+
+```{r create art response, echo=FALSE}
+#regression tree
+tau <-  0.9 #https://www.biorxiv.org/content/10.1101/035675v4.full.pdf fixed thresholds between 0.8 and 0.95 are often used. 
+Ys <- (Ps>= tau)/(1-tau)
+data <- cbind(Ys, Xs, Ps)
+data <- as.data.frame(data)
+```
+
+```{r plot data, echo=FALSE}
+ggplot(data = data, aes(Xs, Ps)) + geom_point()
+```
+```{r plot data, echo=FALSE}
+ggplot(data, aes(x = Ps)) + geom_histogram(binwidth = 0.025, boundary = 0)
+```
+
+```{r grow tree, echo=FALSE}
+nbins <- 5
+m1 <- rpart(
+  formula = Ys ~ Xs,
+  data    = data,
+  method  = "anova",
+  control = rpart.control(cp = 0, minbucket = floor(m/(3*nbins)), maxdepth = log2(nbins))
+)
+rpart.plot(m1)
+```
+```{r table tree, echo=FALSE}
+table(m1$where)
+
+```
+
