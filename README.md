@@ -28,7 +28,7 @@ BiocManager::install("IHW")
 The package can be installed as follows with `devtools` from the Github repository:
 
 ```R
-devtools::install_github("nignatiadis/IHW")
+devtools::install_github("FridljDa/IHW")
 ```
 
 
