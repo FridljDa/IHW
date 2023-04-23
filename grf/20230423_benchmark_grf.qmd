@@ -1,0 +1,90 @@
+---
+title: "benchmark_grf"
+author: "Daniel"
+format: html
+editor: visual
+---
+
+## Quarto
+
+```{r}
+library(microbenchmark)
+library(grf)
+```
+
+```{r}
+ntree = 100
+```
+
+```{r}
+# simulate training data
+n <- 500
+p <- 3
+X <- matrix(rnorm(n * p), n, p)
+Y <- X[, 1] * rnorm(n)
+#as data frame
+df_train <- data.frame(Y,X)
+```
+
+```{r}
+m_eval <- 5
+#simulate small evaling set 
+X_eval <- matrix(rnorm(m_eval*p), m_eval, p)
+df_eval <- data.frame(X_eval)
+```
+
+## randomForestSRC
+
+Using `randomForestSRC`
+
+```{r}
+#Using randomForestSRC
+src_forest <- randomForestSRC::rfsrc(Y ~ X1+X2+X3,
+        data = df_train,
+        ntree = ntree)
+```
+
+```{r}
+predict_groups_src <- function(src_forest, df_eval){
+  predict_groups <- stats::predict(src_forest, df_eval, membership = TRUE)$membership 
+  predict_groups <- as.data.frame(predict_groups)
+}
+```
+
+## GRF
+
+Using `grf`
+
+```{r}
+#Using GRF
+grf_forest <- grf::regression_forest(X, Y, num.trees = ntree)
+#r.pred <- stats::predict(grf_forest, X, membership = TRUE)
+```
+
+```{r}
+predict_groups_grf <- function(grf_forest, X_eval){
+  groups_grf <- matrix(0, nrow = m_eval, ncol = ntree)
+for(tree_index_i in seq_len(ntree)){
+  tree_i <- get_tree(tree_index_i, forest = grf_forest)
+   groups_i <- get_leaf_node(tree_i, newdata = X_eval)
+   groups_grf[,tree_index_i] <- groups_i
+}
+groups_grf <- as.data.frame(groups_grf)
+# convert all columns to factor
+#groups_grf[] <- lapply(groups_grf, factor)
+}
+```
+
+## microbenchmark
+
+```{r}
+microbenchmark <- microbenchmark(
+  predict_groups_src(src_forest, df_eval),
+  predict_groups_grf(grf_forest, X_eval),
+  times = 10
+)
+```
+
+```{r}
+microbenchmark
+```
