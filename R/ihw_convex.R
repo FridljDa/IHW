@@ -429,7 +429,11 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 			m_groups_other_folds <- m_groups
 		} else {
 			filtered_sorted_groups <- sorted_groups[sorted_folds!=i]
+			
+			tic("filtered_sorted_pvalues")
 			filtered_sorted_pvalues <- sorted_pvalues[sorted_folds!=i]
+      toc()
+      
 			filtered_split_sorted_pvalues <- split(filtered_sorted_pvalues, filtered_sorted_groups)
 
       if (!folds_prespecified){
@@ -485,7 +489,9 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 			stop("This type of distribution estimator is not available.")
 		}
     
+		tic("sorted_weights")
 		sorted_weights[sorted_folds == i] <- res$ws[sorted_groups[sorted_folds==i]]
+		toc()
 		weight_matrix[,i] <- res$ws
 
 		if (null_proportion){
@@ -501,10 +507,13 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 
 	}
 
+	tic("sorted_weighted_pvalues")
 	sorted_weighted_pvalues <- mydiv(sorted_pvalues, sorted_weights)
-
-
+  toc()
+  
+  tic("sorted_adj_p")
 	sorted_adj_p <- p.adjust(sorted_weighted_pvalues, method = adjustment_type, n = sum(m_groups))
+	toc()
 	rjs   <- sum(sorted_adj_p <= alpha)
 	lst <- list(lambda=lambda, fold_lambdas=fold_lambdas, rjs=rjs, sorted_pvalues=sorted_pvalues,
 					sorted_weighted_pvalues = sorted_weighted_pvalues,
@@ -718,7 +727,9 @@ ihw_convex <- function(split_sorted_pvalues, alpha, m_groups, m_groups_grenander
 		fdr_constr<- matrix(c(rep(-alpha,nbins)*m_groups,
 						      rep(1,nbins)*m_groups,
 						      rep(0,ncol(constr_matrix)-2*nbins)), nrow=1)
+		tic("constr_matrix")
 		constr_matrix <- rbind(constr_matrix, fdr_constr)
+		toc()
 		rhs <- c(rhs,0)
 	} else if (adjustment_type == "bonferroni"){
 		# incorporate the FWER constraint
@@ -766,9 +777,11 @@ ihw_convex <- function(split_sorted_pvalues, alpha, m_groups, m_groups_grenander
 
 		#if (is.infinite(time_limit)) time_limit <- -1
 		#if (is.infinite(node_limit)) node_limit <- -1
+	  tic("lpsymphony")
 		res <- lpsymphony::lpsymphony_solve_LP(obj, constr_matrix, rep("<=", nrow(constr_matrix)),
 			rhs, #bounds= rsymphony_bounds,
 			max = TRUE, verbosity = -2, first_feasible = FALSE)
+		toc()
 		sol <- res$solution
 		solver_status <- res$status
 	} else {
@@ -820,8 +833,9 @@ presorted_grenander <- function(sorted_pvalues, m_total=length(sorted_pvalues),
   		unique_pvalues <- unique_pvalues[idx_thin]
   		ecdf_values <- ecdf_values[idx_thin]
   	}
-
+    tic("fdrtool::gcmlcm")
   	ll <- fdrtool::gcmlcm(unique_pvalues, ecdf_values, type="lcm")
+  	toc()
 	ll$length <- length(ll$slope.knots)
 	ll$x.knots <- ll$x.knots[-ll$length]
   	ll$y.knots <- ll$y.knots[-ll$length]
