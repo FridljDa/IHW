@@ -12,7 +12,9 @@ devtools::load_all()
 
 ```
 
+
 Most important hyperparam
+
 
 ```{r}
 m <- 1e6
@@ -78,3 +80,4 @@ for (pattern in beginning) {
 }
 
 ```
+
