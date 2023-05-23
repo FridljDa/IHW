@@ -9,13 +9,12 @@ library(profvis)
 library(tictoc)
 library(stringr)
 devtools::load_all()
-
 ```
 
 Most important hyperparam
 
 ```{r}
-m <- 1e4
+m <- 1e6
 ntrees <- 30
 ```
 
@@ -49,7 +48,6 @@ output <- capture.output({
 ```
 
 ```{r}
-
 output <- paste0(output, collapse = "")
 # Vector of patterns
 beginning <- c("lpsymphony", "constr_matrix","fdrtool::gcmlcm","filtered_sorted_pvalues","sorted_weights","sorted_weighted_pvalues","sorted_adj_p")
