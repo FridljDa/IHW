@@ -1,0 +1,37 @@
+---
+title: "visualise_runtime"
+format: html
+editor: visual
+---
+
+```{r}
+library(ggplot2)
+library(readr)
+library(magrittr)
+library(dplyr)
+```
+
+```{r}
+measured_time <- read_csv(here::here("measure_time_scripts/data/measured_time.csv"))
+
+```
+
+You can add options to executable code like this
+
+```{r}
+# Convert data frame to long format
+measured_time <- reshape2::melt(measured_time, 
+                                id.vars = c("m","r","ntress"),
+                                value.name = "time")
+
+measured_time <- measured_time %>%
+  group_by(m, ntress, variable) %>%
+  summarise(time = mean(time))
+```
+
+```{r}
+ggplot(measured_time, aes(x = ntress, y = time, color = variable)) +
+  geom_point()
+```
+
+Consider [Here](https://github.com/FridljDa/IHW/blob/time_measurement/R/ihw_convex.R) and [here](https://github.com/FridljDa/IHW/blob/time_measurement/R/ihw_forest.R) for the interpretation

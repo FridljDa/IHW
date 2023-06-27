@@ -1,0 +1,38 @@
+---
+title: "group_forest"
+format: html
+editor: visual
+---
+
+## Quarto
+
+```{r}
+devtools::load_all()
+```
+
+```{r}
+#| echo: false
+ #save.seed <- .Random.seed
+ set.seed(1)
+ X <- runif(2000, min = 0, max = 2.5) # covariate
+ H <- rbinom(2000, 1, 0.1) # hypothesis true or false
+ Z <- rnorm(2000, H * X) # Z-score
+ folds <- sample(1:5, 2000, replace = TRUE)
+ #.Random.seed <- save.seed
+ pvalue <- 1 - pnorm(Z) # pvalue
+ groups <- group_by_forest(pvalue, as.matrix(X), folds)
+# m_groups <- lapply(groups, function(group) {
+#'   lapply(group, function(group_i) table(group_i, folds))
+#' })
+```
+
+```{r}
+#install.packages("randomForestSRC")
+
+library(randomForestSRC)
+## veteran data
+## randomized trial of two treatment regimens for lung cancer
+data(veteran, package = "randomForestSRC")
+v.obj <- rfsrc(Surv(time, status) ~ ., data = veteran, 
+                   ntree = 1, block.size = 1)
+```

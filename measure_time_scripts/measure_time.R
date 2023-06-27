@@ -1,17 +1,10 @@
-
-library(profvis)
 library(tictoc)
 library(stringr)
 devtools::load_all()
 
-
-
-
 m <- 1e5
-r <- 5
-ntrees <- 500
-
-
+r <- 1
+ntrees <- 100
 
 # regular simulation
 wasserman_normal_sim <- function(m, pi0, xi_min, xi_max, seed = NULL) {
@@ -80,3 +73,16 @@ for (pattern in beginning) {
   cat(pattern, matching_times[[pattern]], "\n")
 }
 
+row <- data.frame(matching_times) 
+row$m <- m
+row$r <- r
+row$ntress <- ntrees
+
+csv_fname <- "measure_time_scripts/data/measured_time.csv"
+write.table(row, 
+            csv_fname, 
+            sep = ",", 
+            #col.names = FALSE,
+            row.names = FALSE,
+            col.names = !file.exists(csv_fname), 
+            append = T)
