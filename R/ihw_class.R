@@ -14,7 +14,7 @@
 #' @slot solver_information  A list, solver specific output, e.g. were all subproblems solved to optimality? (Currently empty list)
 #' @slot stratification_method Character, "quantiles" or "forest" or "none"
 #' @slot weight_matrices_forest list of list of vectors, equivalent of weights, but for stratification method forest
-#' @slot n_censor_thres  Integer, number of censoring thresholds tau to be considered for stratification method "forest"
+#' @slot tau Double, censoring threshold tau of the pvalues in the stratification method "forest". See more in group_by_forest
 #' @slot ntrees  Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} for stratification method "forest"
 #' 
 #' @return The different methods applied to an ihwResult object can return the following:
@@ -60,7 +60,7 @@ ihwResult <- setClass("ihwResult",
            		     solver_information= "list",
            		     stratification_method = "character",
            		     weight_matrices_forest = "list",
-           		     n_censor_thres = "integer",
+           		     tau = "numeric",
            		     ntrees = "integer"))
 
 #-----------------------------adjusted p-values extraction---------------------------------------------------------#
@@ -355,7 +355,9 @@ setMethod("show", signature(object="ihwResult"), function(object) {
   }
   cat("ihwResult object with", nrow(object),"hypothesis tests \n")
   cat("Nominal",  typeI_error, "control level:", alpha(object),"\n")
-  cat("Split into", nbins(object),"bins, based on an", covariate_type(object), "covariate\n")
+  if(is.matrix(covariates) & ncol(covariates) == 1){
+    cat("Split into", nbins(object),"bins, based on an", covariate_type(object), "covariate\n")
+  }
 })
 
 
