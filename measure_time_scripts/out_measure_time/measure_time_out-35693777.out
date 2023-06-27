@@ -1,1 +1,16 @@
 WARNING: ignoring environment value of R_HOME
+Wassermann simulation set-up:
+Number of hypothesis: 1e+05 
+Number of replicates: 1 
+Number of trees: 400 
+
+
+Measured times: 
+group_by_forest 87.646 
+lpsymphony 7.502 
+constr_matrix 7.151 
+fdrtool::gcmlcm 26.687 
+filtered_sorted_pvalues 1.902 
+sorted_weights 4.099 
+sorted_weighted_pvalues 12.296 
+sorted_adj_p 7.62 
