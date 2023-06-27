@@ -1,30 +1,18 @@
----
-title: "measure_time"
-format: html
-editor: visual
----
 
-```{r}
 library(profvis)
 library(tictoc)
 library(stringr)
 devtools::load_all()
-```
 
-Most important hyperparam
 
-```{r}
-<<<<<<< HEAD
-m <- 1e6
-ntrees <- 30
-=======
-m <- 1e4
+
+
+m <- 1e5
 r <- 5
-ntrees <- 2
->>>>>>> db9a13cd2ee50e149b8b37d867c417951205ea64
-```
+ntrees <- 500
 
-```{r}
+
+
 # regular simulation
 wasserman_normal_sim <- function(m, pi0, xi_min, xi_max, seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
@@ -39,9 +27,9 @@ wasserman_normal_sim <- function(m, pi0, xi_min, xi_max, seed = NULL) {
 sim <- wasserman_normal_sim(m, 0.85, 0, 3, seed = 1)
 
 cov_num_vec <- sim$filterstat
-```
 
-```{r}
+
+
 #set forest parameter
 set.seed(1)
 
@@ -49,9 +37,9 @@ set.seed(1)
 output <- capture.output({
   ihw_forest_num_vec <-  replicate(r, ihw(sim$pvalue, cov_num_vec, .1, stratification_method = "forest", ntrees = ntrees))
 })
-```
 
-```{r}
+
+
 output <- paste0(output, collapse = "")
 # Vector of patterns
 beginning <- c("group_by_forest","lpsymphony", "constr_matrix","fdrtool::gcmlcm","filtered_sorted_pvalues","sorted_weights","sorted_weighted_pvalues","sorted_adj_p")
@@ -74,21 +62,21 @@ for (pattern in beginning) {
   matching_times[[pattern]] <- sum(times)
 }
 
-```
 
-```{r}
+
+
 cat("Wassermann simulation set-up:\n")
 cat("Number of hypothesis:", m, "\n")
 cat("Number of replicates:", r, "\n")
 cat("Number of trees:", ntrees, "\n")
 cat("\n")
 cat("\n")
-```
 
-```{r}
+
+
 cat("Measured times: \n")
 # Print the matching times
 for (pattern in beginning) {
   cat(pattern, matching_times[[pattern]], "\n")
 }
-```
+
