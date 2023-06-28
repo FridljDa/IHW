@@ -35,7 +35,10 @@ output <- capture.output({
 
 output <- paste0(output, collapse = "")
 # Vector of patterns
-beginning <- c("group_by_forest","lpsymphony", "constr_matrix","fdrtool::gcmlcm","filtered_sorted_pvalues","sorted_weights","sorted_weighted_pvalues","sorted_adj_p")
+beginning <- c("group_by_forest","lpsymphony",
+               "constr_matrix","fdrtool::gcmlcm","filtered_sorted_pvalues",
+               "sorted_weights","sorted_weighted_pvalues","sorted_adj_p",
+               "predict_groups","as.factor", "randomForestSRC::rfsrc")
 
 # Initialize an empty list to store the matching times
 matching_times <- list()

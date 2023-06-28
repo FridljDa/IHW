@@ -310,6 +310,7 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
     )
     data_other_folds <- data[folds != i, ]
 
+    tic("randomForestSRC::rfsrc")
     # grow forest based on other folds
     forest_other_fold <- randomForestSRC::rfsrc(
       indic ~ . - indic,
@@ -323,13 +324,18 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
       forest.wt = FALSE,
       seed = seed
     )
-
+    toc()
+    
+    tic("predict_groups")
     # predict terminal nodes for all covariates based on the forest structure
     predict_groups <- stats::predict(forest_other_fold, data, membership = TRUE)
-
+    toc()
+    
+    tic("as.factor")
     groups <- predict_groups$membership
     groups <- as.data.frame(groups)
     groups[] <- lapply(groups, as.factor)
+    toc()
 
     names(groups) <- paste0("fold", i, "_tree_", seq_along(groups))
     groups
