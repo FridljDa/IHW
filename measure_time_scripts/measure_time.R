@@ -2,9 +2,17 @@ library(tictoc)
 library(stringr)
 devtools::load_all()
 
-m <- 1e5
-r <- 1
-ntrees <- 100
+
+#load arguments
+command_args <- commandArgs(trailingOnly = TRUE)
+
+m <- as.integer(command_args[1])
+r <- as.integer(command_args[2])
+ntrees <- as.integer(command_args[3])
+
+#m <- 1e5
+#r <- 1
+#ntrees <- 1
 
 # regular simulation
 wasserman_normal_sim <- function(m, pi0, xi_min, xi_max, seed = NULL) {
@@ -54,6 +62,7 @@ for (pattern in beginning) {
   # Extract the matching times and convert them to numeric
   times <- sapply(matches, function(x) as.numeric(x[, 2]))
   
+  eval(times)
   # Sum the matching times and store the result in the list
   matching_times[[pattern]] <- sum(times)
 }
