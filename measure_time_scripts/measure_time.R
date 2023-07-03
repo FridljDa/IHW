@@ -6,13 +6,17 @@ devtools::load_all()
 #load arguments
 command_args <- commandArgs(trailingOnly = TRUE)
 
-m <- as.integer(command_args[1])
-r <- as.integer(command_args[2])
-ntrees <- as.integer(command_args[3])
 
-#m <- 1e5
-#r <- 1
-#ntrees <- 1
+#if(rlang::is_empty(command_args)){
+  m <- 1e5
+  r <- 1
+  ntrees <- 1
+#}else{
+#  m <- as.integer(command_args[1])
+#  r <- as.integer(command_args[2])
+#  ntrees <- as.integer(command_args[3])
+#}
+
 
 # regular simulation
 wasserman_normal_sim <- function(m, pi0, xi_min, xi_max, seed = NULL) {
@@ -43,7 +47,7 @@ output <- capture.output({
 
 output <- paste0(output, collapse = "")
 # Vector of patterns
-beginning <- c("group_by_forest","lpsymphony",
+beginning <- c("lpsymphony",
                "constr_matrix","fdrtool::gcmlcm","filtered_sorted_pvalues",
                "sorted_weights","sorted_weighted_pvalues","sorted_adj_p",
                "predict_groups","as.factor", "randomForestSRC::rfsrc")

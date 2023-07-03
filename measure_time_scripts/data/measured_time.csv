@@ -1,5 +1,2 @@
-"group_by_forest","lpsymphony","constr_matrix","fdrtool..gcmlcm","filtered_sorted_pvalues","sorted_weights","sorted_weighted_pvalues","sorted_adj_p","predict_groups","as.factor","randomForestSRC..rfsrc","m","r","ntress"
-8.981,1.348,0.816,1.939,0.157,0.164,0.896,0.339,4.6,0.218,4.058,1e+05,1,10
-0.21,0.022,0.008,0.005,0.002,0.001,0.002,0.004,0.094,0.003,0.056,1000,2,2
-0.213,0.021,0.011,0.005,0.001,0.002,0.002,0.005,0.094,0.003,0.056,1000,2,2
-0.212,0.021,0.013,0.003,0.003,0.002,0.003,0.001,0.092,0.004,0.056,1000,2,2
+"lpsymphony","constr_matrix","fdrtool..gcmlcm","filtered_sorted_pvalues","sorted_weights","sorted_weighted_pvalues","sorted_adj_p","predict_groups","as.factor","randomForestSRC..rfsrc","m","r","ntress"
+0.102,0.085,0.143,0.009,0.01,0.029,0.019,3.217,0.011,0.982,1e+05,1,1
