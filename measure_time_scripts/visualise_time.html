@@ -146,10 +146,10 @@ Attaching package: 'dplyr'</code></pre>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>measured_time <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"measure_time_scripts/data/measured_time.csv"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
-<pre><code>Rows: 12 Columns: 11
+<pre><code>Rows: 3 Columns: 13
 ── Column specification ────────────────────────────────────────────────────────
 Delimiter: ","
-dbl (11): group_by_forest, lpsymphony, constr_matrix, fdrtool..gcmlcm, filte...
+dbl (13): lpsymphony, constr_matrix, fdrtool..gcmlcm, filtered_sorted_pvalue...
 
 ℹ Use `spec()` to retrieve the full column specification for this data.
 ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
@@ -159,19 +159,19 @@ dbl (11): group_by_forest, lpsymphony, constr_matrix, fdrtool..gcmlcm, filte...
 <div class="cell">
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Convert data frame to long format</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>measured_time <span class="ot">&lt;-</span> reshape2<span class="sc">::</span><span class="fu">melt</span>(measured_time, </span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>                                <span class="at">id.vars =</span> <span class="fu">c</span>(<span class="st">"m"</span>,<span class="st">"r"</span>,<span class="st">"ntress"</span>),</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>                                <span class="at">id.vars =</span> <span class="fu">c</span>(<span class="st">"m"</span>,<span class="st">"r"</span>,<span class="st">"ntrees"</span>),</span>
 <span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>                                <span class="at">value.name =</span> <span class="st">"time"</span>)</span>
 <span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>measured_time <span class="ot">&lt;-</span> measured_time <span class="sc">%&gt;%</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(m, ntress, variable) <span class="sc">%&gt;%</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(m, ntrees, variable) <span class="sc">%&gt;%</span></span>
 <span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">time =</span> <span class="fu">mean</span>(time))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
-<pre><code>`summarise()` has grouped output by 'm', 'ntress'. You can override using the
+<pre><code>`summarise()` has grouped output by 'm', 'ntrees'. You can override using the
 `.groups` argument.</code></pre>
 </div>
 </div>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(measured_time, <span class="fu">aes</span>(<span class="at">x =</span> ntress, <span class="at">y =</span> time, <span class="at">color =</span> variable)) <span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(measured_time, <span class="fu">aes</span>(<span class="at">x =</span> ntrees, <span class="at">y =</span> time, <span class="at">color =</span> variable)) <span class="sc">+</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <p><img src="visualise_time_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid" width="672"></p>

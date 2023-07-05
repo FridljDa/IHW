@@ -1,0 +1,2 @@
+/var/spool/slurm/job35966496/slurm_script: line 18: 3922534 Killed                  Rscript measure_time_scripts/measure_time.R
+slurmstepd: error: Detected 2 oom-kill event(s) in StepId=35966496.batch. Some of your processes may have been killed by the cgroup out-of-memory handler.

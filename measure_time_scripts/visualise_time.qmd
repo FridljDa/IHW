@@ -21,16 +21,16 @@ You can add options to executable code like this
 ```{r}
 # Convert data frame to long format
 measured_time <- reshape2::melt(measured_time, 
-                                id.vars = c("m","r","ntress"),
+                                id.vars = c("m","r","ntrees"),
                                 value.name = "time")
 
 measured_time <- measured_time %>%
-  group_by(m, ntress, variable) %>%
+  group_by(m, ntrees, variable) %>%
   summarise(time = mean(time))
 ```
 
 ```{r}
-ggplot(measured_time, aes(x = ntress, y = time, color = variable)) +
+ggplot(measured_time, aes(x = ntrees, y = time, color = variable)) +
   geom_point()
 ```
 

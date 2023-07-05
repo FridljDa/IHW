@@ -8,9 +8,9 @@ command_args <- commandArgs(trailingOnly = TRUE)
 
 
 #if(rlang::is_empty(command_args)){
-  m <- 1e5
-  r <- 1
-  ntrees <- 1
+  m <- 1e4
+  r <- 10
+  ntrees <- 400
 #}else{
 #  m <- as.integer(command_args[1])
 #  r <- as.integer(command_args[2])
@@ -52,6 +52,8 @@ beginning <- c("lpsymphony",
                "sorted_weights","sorted_weighted_pvalues","sorted_adj_p",
                "predict_groups","as.factor", "randomForestSRC::rfsrc")
 
+#beginning <- c(beginning, paste0("elapsed",beginning))
+
 # Initialize an empty list to store the matching times
 matching_times <- list()
 
@@ -67,11 +69,11 @@ for (pattern in beginning) {
   times <- sapply(matches, function(x) as.numeric(x[, 2]))
   
   eval(times)
+  #browser()
   # Sum the matching times and store the result in the list
+  if(!is.list(times))
   matching_times[[pattern]] <- sum(times)
 }
-
-
 
 
 cat("Wassermann simulation set-up:\n")
@@ -92,7 +94,7 @@ for (pattern in beginning) {
 row <- data.frame(matching_times) 
 row$m <- m
 row$r <- r
-row$ntress <- ntrees
+row$ntrees <- ntrees
 
 csv_fname <- "measure_time_scripts/data/measured_time.csv"
 write.table(row, 
