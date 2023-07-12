@@ -1,0 +1,23 @@
+---
+title: "test_forest"
+format: html
+editor: visual
+---
+
+## Quarto
+
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+devtools::load_all()
+```
+
+```{r}
+ save.seed <- .Random.seed
+ set.seed(1)
+ X <- runif(20000, min = 0, max = 2.5) # covariate
+ H <- rbinom(20000, 1, 0.1) # hypothesis true or false
+ Z <- rnorm(20000, H * X) # Z-score
+ folds <- sample(1:5, 20000, replace = TRUE)
+#' .Random.seed <- save.seed
+pvalue <- 1 - pnorm(Z) # pvalue
+groups <- group_by_forest(pvalue, as.matrix(X), folds)
+```

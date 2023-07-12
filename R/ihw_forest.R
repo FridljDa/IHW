@@ -317,9 +317,11 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
       splitrule = "mse",
       block.size = FALSE,
       forest.wt = FALSE,
-      seed = seed
+      seed = seed,
+      membership = TRUE
     )
 
+    #groups
     # predict terminal nodes for all covariates based on the forest structure
     predict_groups <- stats::predict(forest_other_fold, data, membership = TRUE)
 
@@ -329,6 +331,10 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
 
     names(groups) <- paste0("fold", i, "_tree_", seq_along(groups))
     groups
+    #inbag matrix
+    inbag_matrix <- forest_other_fold[["inbag"]]
+    browser()
+    list(groups, inbag_matrix)
   })
 
   return(groups)
