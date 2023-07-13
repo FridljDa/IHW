@@ -98,8 +98,10 @@ ihw_forest <- function(pvalues, covariates, alpha,
 
   # the stratification method is the main point of deviation of ihw.default_forest from ihw.default
   # groups in ihw.default_forest has the structure of nested list compared to a simple vector in ihw.default
-  groups <- group_by_forest(pvalues, covariates, folds, ntrees, tau, nodedepth, nodesize, mtry, seed)
-
+  groups_inbag_matrices <- group_by_forest(pvalues, covariates, folds, ntrees, tau, nodedepth, nodesize, mtry, seed)
+  groups <- groups_inbag_matrices$groups
+  inbag_matrices <- groups_inbag_matrices$inbag_matrices
+  
   penalty <- "uniform deviation"
 
   group_levels <- lapply(groups, function(groups_i) {
@@ -108,12 +110,20 @@ ihw_forest <- function(pvalues, covariates, alpha,
   # sort pvalues globally
   order_pvalues <- order(pvalues) # TODO BREAK ties by filter statistic rank
   reorder_pvalues <- order(order_pvalues)
-
+  
+  sorted_inbag_matrices <- lapply(seq_len(nfolds), function(i) {
+    inbag_matrices_i <- inbag_matrices[[i]]
+    order_pvalues_i <- order_pvalues[folds != i]
+    browser()
+    #TODO relevel to normal
+    levels(order_pvalues_i) <- seq_len(nrow(order_pvalues_i))
+    inbag_matrices_i[order_pvalues_i, , drop = FALSE]
+  })  
   sorted_groups <- lapply(groups, function(groups_i) {
     groups_i[order_pvalues, , drop = FALSE]
   })
   sorted_pvalues <- pvalues[order_pvalues]
-
+  
   if (!is.null(folds)) {
     sorted_folds <- folds[order_pvalues]
   } else {
@@ -148,6 +158,10 @@ ihw_forest <- function(pvalues, covariates, alpha,
     lapply(seq_len(ntrees_all_comb), function(t) {
       sorted_groups_i_t <- sorted_groups[[i]][, t, drop = TRUE]
       m_groups_i_t <- m_groups[[i]][[t]]
+      sorted_inbag_matrix_i_t <- sorted_inbag_matrices[[i]][,t, drop = TRUE]
+      browser()
+      #filter out out of bag
+      
       ihw_internal(sorted_groups_i_t, sorted_pvalues, alpha, lambdas,
         m_groups_i_t,
         penalty = penalty,
@@ -298,7 +312,7 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
   mtry <- as.integer(mtry)
   nodedepth <- as.integer(nodedepth)
 
-  groups <- lapply(seq_len(nfolds), function(i) {
+  groups_inbag_matrices <- lapply(seq_len(nfolds), function(i) {
     # binary indicator from Boca and leek/storey
     data <- data.frame(
       indic = (pvalues >= tau),
@@ -330,12 +344,24 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
     groups[] <- lapply(groups, as.factor)
 
     names(groups) <- paste0("fold", i, "_tree_", seq_along(groups))
-    groups
+
     #inbag matrix
     inbag_matrix <- forest_other_fold[["inbag"]]
-    browser()
-    list(groups, inbag_matrix)
-  })
 
-  return(groups)
+    return(list(groups = groups, inbag_matrix = inbag_matrix))
+  })
+  
+  groups <- lapply(groups_inbag_matrices, `[[`, "groups")
+  inbag_matrices <- lapply(groups_inbag_matrices, `[[`, "inbag_matrix")
+  
+  #inbag_matrix <- matrix(nrow = m, ncol = ncol(groups[[1]]))
+  #browser()
+  #for(i in seq_len(nfolds)){
+  #i <- 1
+  #  print(sum(folds == i))
+  #  print(nrow(inbag_matrices[[i]]))
+    #inbag_matrix[folds == i,] <- inbag_matrices[[i]]
+  #}
+  
+  return(list(groups = groups, inbag_matrices = inbag_matrices))
 }
