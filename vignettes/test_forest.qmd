@@ -40,3 +40,29 @@ inbag_matrices <- groups_inbag_matrices$inbag_matrices
 #'
  ihw_fdr <- ihw(pvalue, X, .1, stratification_method = "forest")  
 ```
+
+Challanges:
+
+-   sorting
+
+-   complete to out-of-fold
+
+```{r}
+m <- 10
+i <- 2
+ntrees_all_comb <- 5
+pvalues <- runif(m)
+folds <- sample(c(1,2,3,4), m, replace = TRUE)
+inbag_matrices_i <- sample(c(0,1), sum(folds==i)*ntrees_all_comb, replace = TRUE)
+inbag_matrices_i <- matrix(inbag_matrices_i, ncol = ntrees_all_comb)
+```
+
+```{r}
+order_pvalues <- order(pvalues)
+
+completed_inbag_matrix <- 
+matrix(rep(2, m*ntrees_all_comb), nrow = m, ncol = ntrees_all_comb)
+
+completed_inbag_matrix[folds == i, ] <- inbag_matrices_i
+sorted_completed_inbag_matrix <- completed_inbag_matrix[order_pvalues, , drop = FALSE]
+```

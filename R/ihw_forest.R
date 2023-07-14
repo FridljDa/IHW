@@ -104,6 +104,9 @@ ihw_forest <- function(pvalues, covariates, alpha,
   
   penalty <- "uniform deviation"
 
+  ntrees_all_comb <- ntrees # length(res[[1]])
+  m <- length(pvalues)
+  
   group_levels <- lapply(groups, function(groups_i) {
     lapply(groups_i, function(groups_i_t) levels(droplevels(groups_i_t)))
   })
@@ -111,14 +114,18 @@ ihw_forest <- function(pvalues, covariates, alpha,
   order_pvalues <- order(pvalues) # TODO BREAK ties by filter statistic rank
   reorder_pvalues <- order(order_pvalues)
   
-  sorted_inbag_matrices <- lapply(seq_len(nfolds), function(i) {
+  #TODO move following code to group_by_forest?
+  sorted_completed_inbag_matrices <- lapply(seq_len(nfolds), function(i) {
     inbag_matrices_i <- inbag_matrices[[i]]
-    order_pvalues_i <- order_pvalues[folds != i]
-    browser()
-    #TODO relevel to normal
-    levels(order_pvalues_i) <- seq_len(nrow(order_pvalues_i))
-    inbag_matrices_i[order_pvalues_i, , drop = FALSE]
+    #complete matrix to all hypothesis
+    #1 = out of fold, in.bag, 0 = out, of fold, out.of.bag, 2 = in hold out fold
+    completed_inbag_matrix <- 
+      matrix(rep(2, m*ntrees_all_comb), nrow = m, ncol = ntrees_all_comb)
+    
+    completed_inbag_matrix[folds != i, ] <- inbag_matrices_i
+    sorted_completed_inbag_matrix <- completed_inbag_matrix[order_pvalues, , drop = FALSE]
   })  
+  
   sorted_groups <- lapply(groups, function(groups_i) {
     groups_i[order_pvalues, , drop = FALSE]
   })
@@ -151,15 +158,22 @@ ihw_forest <- function(pvalues, covariates, alpha,
   } else if (any(m_groups_unlist < 1000)) {
     message("We recommend that you supply (many) more than 1000 p-values for meaningful data-driven hypothesis weighting results. Consider to decrease nodedepth or increase nodesize.")
   }
-  ntrees_all_comb <- ntrees # length(res[[1]])
+  
 
   # loop over all folds and trees and run ihw_internal
   res <- lapply(seq_len(nfolds), function(i) {
     lapply(seq_len(ntrees_all_comb), function(t) {
+      sorted_completed_inbag_matrix_i_t <- sorted_completed_inbag_matrices[[i]][,t, drop = TRUE]
       sorted_groups_i_t <- sorted_groups[[i]][, t, drop = TRUE]
-      m_groups_i_t <- m_groups[[i]][[t]]
-      sorted_inbag_matrix_i_t <- sorted_inbag_matrices[[i]][,t, drop = TRUE]
       browser()
+      sorted_pvalues_not_in_bag <- sorted_pvalues[sorted_completed_inbag_matrix_i_t != 1]
+      sorted_groups_not_in_bag_i_t <- sorted_groups_i_t[sorted_completed_inbag_matrix_i_t != 1]
+      
+      #drop inbag hypothesis, which have been used to construct groupings
+      #sorted_groups_i_t, sorted_pvalues, sorted_folds
+      
+      m_groups_not_in_bag_i_t <- table(sorted_groups_i_t, sorted_folds)
+      
       #filter out out of bag
       
       ihw_internal(sorted_groups_i_t, sorted_pvalues, alpha, lambdas,
@@ -354,14 +368,7 @@ group_by_forest <- function(pvalues, covariates, folds, ntrees = 10, tau = 0.5, 
   groups <- lapply(groups_inbag_matrices, `[[`, "groups")
   inbag_matrices <- lapply(groups_inbag_matrices, `[[`, "inbag_matrix")
   
-  #inbag_matrix <- matrix(nrow = m, ncol = ncol(groups[[1]]))
-  #browser()
-  #for(i in seq_len(nfolds)){
-  #i <- 1
-  #  print(sum(folds == i))
-  #  print(nrow(inbag_matrices[[i]]))
-    #inbag_matrix[folds == i,] <- inbag_matrices[[i]]
-  #}
+  
   
   return(list(groups = groups, inbag_matrices = inbag_matrices))
 }
