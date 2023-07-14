@@ -145,6 +145,7 @@ ihw.default <- function(pvalues, covariates, alpha,
       nodedepth,
       nodesize,
       mtry,
+      drop_inbag,
       ...
     )
     return(res)

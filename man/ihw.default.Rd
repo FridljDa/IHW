@@ -28,10 +28,11 @@
   return_internal = FALSE,
   stratification_method = "quantiles",
   ntrees = 10L,
-  tau = 0.5,
+  tau = 0.6,
   nodedepth = NULL,
-  nodesize = 300,
+  nodesize = 500,
   mtry = "auto",
+  drop_inbag = FALSE,
   ...
 )
 
@@ -102,6 +103,9 @@ is used within each bin to estimate the proportion of null hypotheses.}
 
 \item{mtry}{Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
 Use "auto" for automatic selection.}
+
+\item{drop_inbag}{do not use hypotheses, which have already been used for the 
+construction of the partition for the construction of the weights as well}
 
 \item{...}{Arguments passed to internal functions.}
 

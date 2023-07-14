@@ -10,8 +10,8 @@ group_by_forest(
   folds,
   ntrees = 10,
   tau = 0.5,
-  nodedepth = 4,
-  nodesize = 1000,
+  nodedepth = NULL,
+  nodesize = 300,
   mtry = "auto",
   seed = NULL
 )

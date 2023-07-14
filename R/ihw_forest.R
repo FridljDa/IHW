@@ -24,7 +24,7 @@ ihw_forest <- function(pvalues, covariates, alpha,
                        nodedepth,
                        nodesize,
                        mtry,
-                       drop_inbag
+                       drop_inbag,
                        ...) {
 
   # This function essentially wraps the lower level function ihw_internal
