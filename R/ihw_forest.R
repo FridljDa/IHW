@@ -24,6 +24,7 @@ ihw_forest <- function(pvalues, covariates, alpha,
                        nodedepth,
                        nodesize,
                        mtry,
+                       drop_inbag
                        ...) {
 
   # This function essentially wraps the lower level function ihw_internal
@@ -165,22 +166,26 @@ ihw_forest <- function(pvalues, covariates, alpha,
     lapply(seq_len(ntrees_all_comb), function(t) {
       sorted_completed_inbag_matrix_i_t <- sorted_completed_inbag_matrices[[i]][,t, drop = TRUE]
       sorted_groups_i_t <- sorted_groups[[i]][, t, drop = TRUE]
-      browser()
-      sorted_pvalues_not_in_bag <- sorted_pvalues[sorted_completed_inbag_matrix_i_t != 1]
-      sorted_groups_not_in_bag_i_t <- sorted_groups_i_t[sorted_completed_inbag_matrix_i_t != 1]
       
       #drop inbag hypothesis, which have been used to construct groupings
-      #sorted_groups_i_t, sorted_pvalues, sorted_folds
+      #if(FALSE){
+        #_not_in_bag_i_t
+      #  sorted_pvalues <- sorted_pvalues[sorted_completed_inbag_matrix_i_t != 1]
+      #  sorted_groups_i_t <- sorted_groups_i_t[sorted_completed_inbag_matrix_i_t != 1]
+      #  sorted_folds <- sorted_folds[sorted_completed_inbag_matrix_i_t != 1]
+      #}
+      if(drop_inbag){
+        sorted_folds_temp <- sorted_folds
+        sorted_folds_temp[sorted_completed_inbag_matrix_i_t == 1] <- i
+      }
       
-      m_groups_not_in_bag_i_t <- table(sorted_groups_i_t, sorted_folds)
-      
-      #filter out out of bag
+      m_groups_i_t <- table(sorted_groups_i_t, sorted_folds_temp)
       
       ihw_internal(sorted_groups_i_t, sorted_pvalues, alpha, lambdas,
         m_groups_i_t,
         penalty = penalty,
         quiet = quiet,
-        sorted_folds = sorted_folds,
+        sorted_folds = sorted_folds_temp,
         nfolds = nfolds,
         nfolds_internal = nfolds_internal,
         nsplits_internal = nsplits_internal,

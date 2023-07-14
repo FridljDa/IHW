@@ -54,6 +54,8 @@ ihw <- function(...)
 #' @param nodesize Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
 #' @param mtry Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
 #'				Use "auto" for automatic selection.
+#' @param drop_inbag do not use hypotheses, which have already been used for the 
+#'        construction of the partition for the construction of the weights as well
 #' @param ... Arguments passed to internal functions.
 #'
 #' @return A ihwResult object.
@@ -102,6 +104,7 @@ ihw.default <- function(pvalues, covariates, alpha,
 						nodedepth = NULL,
 						nodesize = 500,
 						mtry = "auto",
+						drop_inbag = FALSE,
 						...){
 
 	# This function essentially wraps the lower level function ihw_internal
