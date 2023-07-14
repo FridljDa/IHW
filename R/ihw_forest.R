@@ -174,8 +174,8 @@ ihw_forest <- function(pvalues, covariates, alpha,
       #  sorted_groups_i_t <- sorted_groups_i_t[sorted_completed_inbag_matrix_i_t != 1]
       #  sorted_folds <- sorted_folds[sorted_completed_inbag_matrix_i_t != 1]
       #}
+      sorted_folds_temp <- sorted_folds
       if(drop_inbag){
-        sorted_folds_temp <- sorted_folds
         sorted_folds_temp[sorted_completed_inbag_matrix_i_t == 1] <- i
       }
       
