@@ -15,7 +15,7 @@ ihw <- function(...)
 #'
 #'
 #' @param pvalues  Numeric vector of unadjusted p-values.
-#' @param covariates  Vector which contains the one-dimensional covariates (independent under the H0 of the p-value)
+#' @param covariates  Vector or matrix which contains the covariates (independent under the H0 of the p-value)
 #'                for each test. Can be numeric or a factor. (If numeric it will be converted into factor by binning.)
 #' @param alpha   Numeric, sets the nominal level for FDR control.
 #' @param covariate_type  "ordinal" or "nominal" (i.e. whether covariates can be sorted in increasing order or not)
@@ -47,6 +47,13 @@ ihw <- function(...)
 #'        is used within each bin to estimate the proportion of null hypotheses.
 #' @param null_proportion_level Numeric, threshold for Storey's pi0 estimation procedure, defaults to 0.5
 #' @param return_internal Returns a lower level representation of the output (only useful for debugging purposes).
+#' @param stratification_method Character ("quantiles" or "forest" or "none")
+#' @param ntrees Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
+#' @param tau Double, censoring threshold tau of the pvalues in the stratification method "forest". See more in group_by_forest
+#' @param nodedepth Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
+#' @param nodesize Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
+#' @param mtry Integer, see same parameter in \code{\link[randomForestSRC]{rfsrc}} used when \code{stratification_method=="forest"}
+#'				Use "auto" for automatic selection.
 #' @param ... Arguments passed to internal functions.
 #'
 #' @return A ihwResult object.
@@ -89,6 +96,12 @@ ihw.default <- function(pvalues, covariates, alpha,
 						null_proportion = FALSE,
 						null_proportion_level = 0.5,
 						return_internal = FALSE,
+						stratification_method = "quantiles",
+						ntrees = 10L,
+						tau = 0.6,
+						nodedepth = NULL,
+						nodesize = 500,
+						mtry = "auto",
 						...){
 
 	# This function essentially wraps the lower level function ihw_internal
@@ -105,6 +118,35 @@ ihw.default <- function(pvalues, covariates, alpha,
 		stop("For Bonferroni-like FWER adjustment currently only the grenander estimator is supported.")
 	}
 
+  if (stratification_method == "forest" & nbins > 1) {
+    res <- ihw_forest(
+      pvalues, covariates, alpha,
+      covariate_type,
+      nbins,
+      m_groups,
+      folds,
+      quiet,
+      nfolds,
+      nfolds_internal,
+      nsplits_internal,
+      lambdas,
+      seed,
+      distrib_estimator,
+      lp_solver,
+      adjustment_type,
+      null_proportion,
+      null_proportion_level,
+      return_internal,
+      ntrees,
+      tau,
+      nodedepth,
+      nodesize,
+      mtry,
+      ...
+    )
+    return(res)
+  }
+  
 	if (is.null(folds)){
 		nfolds <- as.integer(nfolds)
 	} else {
@@ -128,7 +170,13 @@ ihw.default <- function(pvalues, covariates, alpha,
 
    	# filter our p-values
     pvalues <- pvalues[nna]
-    covariates <- covariates[nna]
+    
+    if (is.matrix(covariates)) {
+      covariates <- covariates[nna, , drop = FALSE]
+    } else {
+      covariates <- covariates[nna]
+    }
+    
     weights <- rep(NA, length(pvalues))
 
     if (any(is.na(covariates))){
@@ -137,7 +185,9 @@ ihw.default <- function(pvalues, covariates, alpha,
 
 
 	if (covariate_type =="ordinal" & is.numeric(covariates)){
-
+	  covariates <- as.matrix(covariates)
+	  nvar <- ncol(covariates)
+	  
 		if (!is.null(m_groups)){
 			stop("m_groups should only be specified when the covariates are a factor")
 		}
@@ -145,10 +195,23 @@ ihw.default <- function(pvalues, covariates, alpha,
 		if (nbins == "auto"){
 			nbins <- max(1,min(40, floor(length(pvalues)/1500))) # rule of thumb..
 		}
-		groups <- as.factor(groups_by_filter(covariates, nbins, seed=seed))
-		penalty <- "total variation"
+	  
+	  if (stratification_method == "quantiles") {
+	    groups <- groups_by_filter_multivariate(covariates, nbins, seed = seed)
+	  } else {
+	    stop("Unknown stratification method")
+	  }
+	  
+	  if (nvar == 1) {
+	    colnames(covariates) <- "covariate"
+	    penalty <- "total variation"
+	  } else {
+	    colnames(covariates) <- seq_len(nvar)
+	    penalty <- "uniform deviation"
+	  }
 
 	} else if (is.factor(covariates)){
+	  stratification_method <- "none"
 		groups <- covariates
 		if (nbins != "auto" & nbins != nlevels(groups)){
 			warning("Overwriting manually specified nbins, since it has to equal the number
@@ -170,7 +233,7 @@ ihw.default <- function(pvalues, covariates, alpha,
 		# just a few for now until I get warm starts of the LP solvers to work
 		lambdas <- c(0, 1, nbins/8, nbins/4, nbins/2, nbins, Inf)
 	}
-
+  
 	if (nbins < 1) {
 		stop("Cannot have less than one bin.")
 	}
@@ -211,9 +274,11 @@ ihw.default <- function(pvalues, covariates, alpha,
 		}
 	}
 	# once we have groups, check whether they include enough p-values
-	if (nbins > 1 & any(m_groups < 1000)){
+	if(nbins > 1 & all(m_groups < 2)){
+	  stop("Bins of size < 2 are currently not allowed for hypothesis weighting. Please lower the number of bins or try a different stratification method.")
+	} else if (nbins > 1 & any(m_groups < 1000)){
 		message("We recommend that you supply (many) more than 1000 p-values for meaningful data-driven hypothesis weighting results.")
-	}
+	} 
 
 	# start by making sure seed is correctly specified
 	if (!is.null(seed)){
@@ -266,7 +331,12 @@ ihw.default <- function(pvalues, covariates, alpha,
 	adj_pvalues <- fill_nas_reorder(res$sorted_adj_p, nna, reorder_pvalues)
 	groups     <- factor(fill_nas_reorder(res$sorted_groups, nna, reorder_pvalues),levels=group_levels)
 	folds      <- factor(fill_nas_reorder(res$sorted_folds, nna, reorder_pvalues),levels=1:nfolds)
-	covariates <- fill_nas_reorder(covariates, nna, 1:length(covariates))
+	
+	if (is.matrix(covariates)) {
+	  covariates <- fill_nas_reorder_dataframe(covariates, nna, seq_len(nrow(covariates)))
+	} else {
+	  covariates <- fill_nas_reorder(covariates, nna, seq_along(covariates))
+	}
 
 
 	df <- data.frame(pvalue = pvalues,
@@ -283,19 +353,24 @@ ihw.default <- function(pvalues, covariates, alpha,
 		 			alpha = alpha,
 					nbins = as.integer(nbins),
 					nfolds = nfolds,
-					regularization_term = res$fold_lambdas,
+					regularization_term = as.matrix(res$fold_lambdas),
 					m_groups = as.integer(m_groups),
 					penalty = penalty,
 					covariate_type = covariate_type,
 					adjustment_type = adjustment_type,
 					reg_path_information = data.frame(),
-		 			solver_information = list())
+		 			solver_information = list(),
+					stratification_method = stratification_method,
+					weight_matrices_forest = list(),
+					tau = double(0),
+					ntrees = integer(0))
 
 	ihw_obj
 
 }
 
 # operate on pvalues which have already been sorted and without any NAs
+#' @importFrom stats na.exclude p.adjust runif
 ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 								m_groups,
 							    penalty="total variation",
@@ -311,6 +386,7 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 								null_proportion = FALSE,
 								null_proportion_level = 0.5,
 								debug_flag=FALSE,
+								folds_subset = NULL,
 								...){
 
 	folds_prespecified <- !is.null(sorted_folds)
@@ -339,7 +415,9 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 	if (debug_flag==TRUE){
 		rjs_path_mat <- matrix(NA, nrow=nfolds, ncol=length(lambdas))
 	}
-	for (i in 1:nfolds){
+	
+	if (is.null(folds_subset)) folds_subset <- seq_len(nfolds)
+	for (i in folds_subset) {
 
 		if (!quiet) message(paste("Estimating weights for fold", i))
 		# don't worry about inefficencies right now, they are only O(n) and sorting dominates this
@@ -407,7 +485,7 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 		} else {
 			stop("This type of distribution estimator is not available.")
 		}
-
+    
 		sorted_weights[sorted_folds == i] <- res$ws[sorted_groups[sorted_folds==i]]
 		weight_matrix[,i] <- res$ws
 
@@ -416,7 +494,7 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 				                  sorted_weights[sorted_folds == i],
 				                  tau= null_proportion_level,
 				                  m=sum(m_groups_holdout_fold))
-
+			
 			sorted_weights[sorted_folds == i] <- sorted_weights[sorted_folds == i]/pi0_est
 			weight_matrix[,i] <- weight_matrix[,i]/pi0_est
 
@@ -443,7 +521,7 @@ ihw_internal <- function(sorted_groups, sorted_pvalues, alpha, lambdas,
 
 
 #' @rdname ihw.default
-#' @param formula \code{\link{formula}}, specified in the form pvalue~covariate (only 1D covariate supported)
+#' @param formula \code{\link{formula}}, specified in the form pvalue~covariate1+covariate2+...
 #' @param data data.frame from which the variables in formula should be taken
 #' @export
 ihw.formula <- function(formula, data=parent.frame(), ...){
@@ -451,9 +529,20 @@ ihw.formula <- function(formula, data=parent.frame(), ...){
 		stop("expecting formula of the form pvalue~covariate")
 	}
 	pv_name <- formula[[2]]
-	cov_name <- formula[[3]]
+	
+	cov_names <- labels(stats::terms(formula))
+	cov_names <- lapply(cov_names, function(cov_name) parse(text = cov_name))
+	nvar <- length(cov_names)
+	
 	pvalues <- eval(pv_name, data, parent.frame())
-	covariates <- eval(cov_name, data, parent.frame())
+	
+	if (nvar == 1) {
+	  covariates <- eval(cov_names[[1]], data, parent.frame())
+	} else {
+	  m <- length(pvalues)
+	  covariates <- vapply(cov_names, function(cov_name) eval(cov_name, data, parent.frame()), numeric(m))
+	}
+	
 	ihw(pvalues, covariates, ...)
 }
 
@@ -531,7 +620,7 @@ ihw_convex <- function(split_sorted_pvalues, alpha, m_groups, m_groups_grenander
 		return(list(ws=ws))
 	}
 
-
+  
 	# preprocessing:  Set very low p-values to 0, otherwise LP solvers have problems due to numerical instability
 	# Note: This only affects the internal optimization, the higher level functions will
 	# still return adjusted pvalues based on the original p-values
@@ -686,7 +775,7 @@ ihw_convex <- function(split_sorted_pvalues, alpha, m_groups, m_groups_grenander
 	} else {
 		stop("Only gurobi and lpsymphony solvers currently supported.")
 	}
-
+  
 	# catch negative thresholds due to numerical rounding
 	ts <- pmax(sol[(1:nbins)+nbins],0)
 	ws <- thresholds_to_weights(ts, m_groups)	#\approx ts/sum(ts)*nbins
@@ -700,7 +789,17 @@ ihw_convex <- function(split_sorted_pvalues, alpha, m_groups, m_groups_grenander
 presorted_grenander <- function(sorted_pvalues, m_total=length(sorted_pvalues),
 							grenander_binsize = 1,
 							quiet=TRUE){
-
+    if (m_total < 2) {
+      #uniform CDF
+      ll <- list(
+        length = 2,
+        x.knots = c(0,1), 
+        y.knots = c(0,1),
+        slope.knots = c(1,0)
+      )
+      return(ll)
+    }
+  
   	unique_pvalues <- unique(sorted_pvalues)
   	ecdf_values <- cumsum(tabulate(match(sorted_pvalues, unique_pvalues)))/m_total
 

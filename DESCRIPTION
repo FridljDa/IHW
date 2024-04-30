@@ -14,12 +14,15 @@ Depends:
     R (>= 3.3.0)
 License: Artistic-2.0
 LazyData: true
+Encoding: UTF-8
 Imports:
     methods,
     slam,
     lpsymphony,
     fdrtool,
-    BiocGenerics
+    BiocGenerics,
+    randomForestSRC,
+    stats
 Suggests:
     ggplot2,
     dplyr,
@@ -37,4 +40,4 @@ VignetteBuilder: knitr
 biocViews: ImmunoOncology, 
     MultipleComparison,
     RNASeq
-RoxygenNote: 7.1.1
+RoxygenNote: 7.2.1
